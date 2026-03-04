@@ -6,6 +6,8 @@ import random
 import os
 import re
 import sqlite3
+import json
+import argparse
 from torch.utils.checkpoint import checkpoint
 
 # Task 1: Energy Network PyTorch class (GNN Version)
@@ -206,34 +208,57 @@ class ASTGraphTokenizer:
             
         return torch.tensor(node_ids, dtype=torch.long), adj
 
-def generate_sympy_data(num_samples=100, max_nodes=30):
+def generate_sympy_data(num_samples=100, max_nodes=30, mode="algebraic", tokenizer=None):
     """
     Generate dataset of correct pairs and adversarial mutations using SymPy.
+    Supports 'arithmetic' for cold starts and 'algebraic' for complex identities.
     """
+    if tokenizer is None:
+        tokenizer = ASTGraphTokenizer()
     x = sp.Symbol('x')
-    tokenizer = ASTGraphTokenizer()
     dataset = []
+    raw_json_data = []
     
     for _ in range(num_samples):
-        # Generate random identity: factored form <-> expanded polynomial
-        a = random.randint(-5, 5)
-        b = random.randint(-5, 5)
-        factored = (x + a) * (x + b)
-        expanded = sp.expand(factored)
-        
+        if mode == "arithmetic":
+            a = random.randint(1, 10)
+            b = random.randint(1, 10)
+            op_choice = random.choice(["add", "mul", "sub"])
+            
+            if op_choice == "add":
+                expanded = sp.Add(a, b, evaluate=False)
+                factored = sp.sympify(a + b)
+            elif op_choice == "mul":
+                expanded = sp.Mul(a, b, evaluate=False)
+                factored = sp.sympify(a * b)
+            else:
+                expanded = sp.Add(a, -b, evaluate=False)
+                factored = sp.sympify(a - b)
+                
+            adversarial = factored + random.randint(1, 5)
+        else:
+            a = random.randint(-5, 5)
+            b = random.randint(-5, 5)
+            factored = (x + a) * (x + b)
+            expanded = sp.expand(factored)
+            
+            mutation_type = random.choice([1, 2, 3])
+            if mutation_type == 1:
+                adversarial = (x - a) * (x + b) # Wrong sign
+            elif mutation_type == 2:
+                adversarial = (x + a + 1) * (x + b) # Wrong constant
+            else:
+                adversarial = (x + b) * (x + b) # Duplicate term
+
         problem_nodes, problem_adj = tokenizer.encode_graph(expanded, max_nodes)
         correct_nodes, correct_adj = tokenizer.encode_graph(factored, max_nodes)
-        
-        # Create an 'Adversarial' mutation (e.g., incorrect factor)
-        mutation_type = random.choice([1, 2, 3])
-        if mutation_type == 1:
-            adversarial = (x - a) * (x + b) # Wrong sign
-        elif mutation_type == 2:
-            adversarial = (x + a + 1) * (x + b) # Wrong constant
-        else:
-            adversarial = (x + b) * (x + b) # Duplicate term
-
         advers_nodes, advers_adj = tokenizer.encode_graph(adversarial, max_nodes)
+        
+        raw_json_data.append({
+            "problem": str(expanded),
+            "correct": str(factored),
+            "adversarial": str(adversarial)
+        })
         
         dataset.append({
             "problem_expr": expanded,
@@ -247,7 +272,7 @@ def generate_sympy_data(num_samples=100, max_nodes=30):
             "adversarial_adj": advers_adj
         })
     
-    return dataset, tokenizer
+    return dataset, tokenizer, raw_json_data
 
 def save_checkpoint(model, tokenizer, path="math_ebm.pt"):
     torch.save({
@@ -342,16 +367,30 @@ def nl_to_sympy_str(text):
     text = re.sub(r'(\d)\s*([a-zA-Z])', r'\1*\2', text)
     return text
 
-def train_ebm(save_path="math_ebm.pt", db_conn=None):
+def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False):
     if db_conn is None:
         db_conn = init_db()
         
-    print("Generating SymPy dataset of correct identities and adversarials...")
-    MAX_NODES = 30
-    dataset, tokenizer = generate_sympy_data(1000, max_nodes=MAX_NODES)
+    device = torch.device("cpu" if use_cpu or not torch.cuda.is_available() else "cuda")
+    print(f"Training on device: {device}")
+    
+    MAX_NODES = 50 # Increased max_nodes to accommodate larger generated trees
+    tokenizer = ASTGraphTokenizer()
+    
+    print("Generating Cold Start Arithmetic Dataset...")
+    arith_dataset, tokenizer, _ = generate_sympy_data(2000, max_nodes=MAX_NODES, mode="arithmetic", tokenizer=tokenizer)
+    
+    print(f"Generating 10,000 Algebraic Identities Dataset... (SymPy executing on CPU)")
+    algeb_dataset, tokenizer, raw_json_data = generate_sympy_data(10000, max_nodes=MAX_NODES, mode="algebraic", tokenizer=tokenizer)
+    
+    json_path = "algebraic_identities.json"
+    with open(json_path, "w") as f:
+        json.dump(raw_json_data, f, indent=4)
+    print(f"Saved 10,000 basic algebraic identities to {json_path}")
     
     print("Logging mathematically sound ground-truth generation to knowledge database...")
-    for item in dataset:
+    # Log subset to db for brevity
+    for item in algeb_dataset[:100]:
         p_math = str(item["problem_expr"])
         s_math = str(item["correct_expr"])
         p_nl = sympy_to_nl_str(item["problem_expr"])
@@ -362,9 +401,6 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None):
     # Target 6GB VRAM constraint Memory Optimizations
     BATCH_SIZE = 16 
     GRAD_ACCUM_STEPS = 4 
-    EPOCHS = 10
-    
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # 256 dim fits comfortably within 6GB threshold
     model = MathEBM(vocab_size=1000, d_model=256, num_layers=4).to(device)
@@ -373,54 +409,61 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None):
     # Resize embedding layer to fit the dynamic token vocabulary exactly
     model.embedding = nn.Embedding(tokenizer.vocab_size + 100, 256).to(device)
     
-    print(f"Training on device: {device}")
-    model.train()
-    
-    for epoch in range(EPOCHS):
-        total_loss = 0
-        optimizer.zero_grad()
-        
-        random.shuffle(dataset)
-        
-        for i in range(0, len(dataset), BATCH_SIZE):
-            batch = dataset[i:i+BATCH_SIZE]
+    def run_training_loop(dataset, epochs, phase_name):
+        print(f"--- Starting {phase_name} ({epochs} Epochs) ---")
+        model.train()
+        for epoch in range(epochs):
+            total_loss = 0
+            optimizer.zero_grad()
             
-            x_nodes = torch.stack([item["problem_nodes"] for item in batch]).to(device)
-            x_adj = torch.stack([item["problem_adj"] for item in batch]).to(device)
+            random.shuffle(dataset)
             
-            y_pos_discrete = torch.stack([item["correct_nodes"] for item in batch]).to(device)
-            y_pos_adj = torch.stack([item["correct_adj"] for item in batch]).to(device)
-            
-            y_pos_soft = F.one_hot(y_pos_discrete, num_classes=model.embedding.num_embeddings).float()
-            
-            y_neg_init_discrete = torch.stack([item["adversarial_nodes"] for item in batch]).to(device)
-            y_neg_adj = torch.stack([item["adversarial_adj"] for item in batch]).to(device)
-            
-            y_neg_init = F.one_hot(y_neg_init_discrete, num_classes=model.embedding.num_embeddings).float()
-            y_neg_init = y_neg_init * 5.0 + torch.randn_like(y_neg_init) 
-            
-            y_neg_logits = sample_langevin(model, x_nodes, x_adj, y_neg_init, y_neg_adj, steps=15, step_size=0.1, temp=1.0)
-            y_neg_soft = F.gumbel_softmax(y_neg_logits, tau=1.0, hard=False)
-            
-            model.train() 
-            
-            pos_energy = model(x_nodes, x_adj, y_pos_soft, y_pos_adj)
-            neg_energy = model(x_nodes, x_adj, y_neg_soft, y_neg_adj)
-            
-            loss = (pos_energy - neg_energy).mean() + 0.1 * (pos_energy**2 + neg_energy**2).mean()
-            
-            loss = loss / GRAD_ACCUM_STEPS
-            loss.backward()
-            
-            total_loss += loss.item() * GRAD_ACCUM_STEPS
-            
-            if (i // BATCH_SIZE + 1) % GRAD_ACCUM_STEPS == 0:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                optimizer.step()
-                optimizer.zero_grad()
+            for i in range(0, len(dataset), BATCH_SIZE):
+                batch = dataset[i:i+BATCH_SIZE]
                 
-        avg_loss = total_loss / (len(dataset)//BATCH_SIZE)
-        print(f"Epoch {epoch+1}/{EPOCHS} | CD Loss: {avg_loss:.4f}")
+                x_nodes = torch.stack([item["problem_nodes"] for item in batch]).to(device)
+                x_adj = torch.stack([item["problem_adj"] for item in batch]).to(device)
+                
+                y_pos_discrete = torch.stack([item["correct_nodes"] for item in batch]).to(device)
+                y_pos_adj = torch.stack([item["correct_adj"] for item in batch]).to(device)
+                
+                y_pos_soft = F.one_hot(y_pos_discrete, num_classes=model.embedding.num_embeddings).float()
+                
+                y_neg_init_discrete = torch.stack([item["adversarial_nodes"] for item in batch]).to(device)
+                y_neg_adj = torch.stack([item["adversarial_adj"] for item in batch]).to(device)
+                
+                y_neg_init = F.one_hot(y_neg_init_discrete, num_classes=model.embedding.num_embeddings).float()
+                y_neg_init = y_neg_init * 5.0 + torch.randn_like(y_neg_init) 
+                
+                y_neg_logits = sample_langevin(model, x_nodes, x_adj, y_neg_init, y_neg_adj, steps=15, step_size=0.1, temp=1.0)
+                y_neg_soft = F.gumbel_softmax(y_neg_logits, tau=1.0, hard=False)
+                
+                model.train() 
+                
+                pos_energy = model(x_nodes, x_adj, y_pos_soft, y_pos_adj)
+                neg_energy = model(x_nodes, x_adj, y_neg_soft, y_neg_adj)
+                
+                loss = (pos_energy - neg_energy).mean() + 0.1 * (pos_energy**2 + neg_energy**2).mean()
+                
+                loss = loss / GRAD_ACCUM_STEPS
+                loss.backward()
+                
+                total_loss += loss.item() * GRAD_ACCUM_STEPS
+                
+                if (i // BATCH_SIZE + 1) % GRAD_ACCUM_STEPS == 0:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                    optimizer.step()
+                    optimizer.zero_grad()
+                    
+            avg_loss = total_loss / (len(dataset)//BATCH_SIZE)
+            if (epoch + 1) % max(1, epochs // 10) == 0:
+                print(f"[{phase_name}] Epoch {epoch+1}/{epochs} | CD Loss: {avg_loss:.4f}")
+
+    # Phase 1: 500 epochs on Arithmetic
+    run_training_loop(arith_dataset, 500, "Cold Start (Arithmetic)")
+    
+    # Phase 2: 10 epochs on Algebraic dataset
+    run_training_loop(algeb_dataset, 10, "Discovery Phase (Algebraic)")
         
     print(f"Saving model checkpoint to {save_path}...")
     save_checkpoint(model, tokenizer, save_path)
@@ -512,8 +555,12 @@ def interactive_interface():
             break
 
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] == "--train":
-        train_ebm()
+    parser = argparse.ArgumentParser(description="Mathematical Energy-Based Model")
+    parser.add_argument("--train", action="store_true", help="Run the full training pipeline (Arithmetic Cold Start + Algebraic Discovery)")
+    parser.add_argument("--cpu", action="store_true", help="Force execution on CPU for large tree sizes exceeding VRAM")
+    args = parser.parse_args()
+    
+    if args.train:
+        train_ebm(use_cpu=args.cpu)
     else:
         interactive_interface()
