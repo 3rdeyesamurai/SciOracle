@@ -3,6 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import sympy as sp
 import random
+import os
+import re
+import sqlite3
 from torch.utils.checkpoint import checkpoint
 
 # Task 1: Energy Network PyTorch class (GNN Version)
@@ -233,6 +236,9 @@ def generate_sympy_data(num_samples=100, max_nodes=30):
         advers_nodes, advers_adj = tokenizer.encode_graph(adversarial, max_nodes)
         
         dataset.append({
+            "problem_expr": expanded,
+            "correct_expr": factored,
+            "adversarial_expr": adversarial,
             "problem_nodes": problem_nodes,
             "problem_adj": problem_adj,
             "correct_nodes": correct_nodes,
@@ -243,10 +249,115 @@ def generate_sympy_data(num_samples=100, max_nodes=30):
     
     return dataset, tokenizer
 
-def train_ebm():
+def save_checkpoint(model, tokenizer, path="math_ebm.pt"):
+    torch.save({
+        "model_state_dict": model.state_dict(),
+        "vocab": tokenizer.vocab,
+        "inv_vocab": tokenizer.inv_vocab,
+        "vocab_size": tokenizer.vocab_size,
+        "embedding_num": model.embedding.num_embeddings
+    }, path)
+
+def load_checkpoint(path, device):
+    checkpoint = torch.load(path, map_location=device, weights_only=False)
+    # Reconstruct tokenizer
+    tokenizer = ASTGraphTokenizer()
+    tokenizer.vocab = checkpoint["vocab"]
+    tokenizer.inv_vocab = checkpoint["inv_vocab"]
+    tokenizer.vocab_size = checkpoint["vocab_size"]
+    
+    # Init model
+    model = MathEBM(vocab_size=1000, d_model=256, num_layers=4).to(device)
+    model.embedding = nn.Embedding(checkpoint["embedding_num"], 256).to(device)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model.eval()
+    return model, tokenizer
+
+def init_db(db_path="math_knowledge.db"):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS math_discoveries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            problem_nl TEXT,
+            problem_math TEXT,
+            solution_nl TEXT,
+            solution_math TEXT,
+            energy REAL,
+            is_sound BOOLEAN,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    return conn
+
+def log_to_db(conn, p_nl, p_math, s_nl, s_math, energy, is_sound):
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO math_discoveries 
+        (problem_nl, problem_math, solution_nl, solution_math, energy, is_sound)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (str(p_nl), str(p_math), str(s_nl), str(s_math), float(energy) if energy is not None else 0.0, bool(is_sound)))
+    conn.commit()
+
+def sympy_to_nl_str(expr):
+    """Assigns proper natural language reading to a SymPy equation."""
+    text = str(expr)
+    replacements = {
+        "**3": " cubed ",
+        "**2": " squared ",
+        "**": " to the power of ",
+        "*": " times ",
+        "+": " plus ",
+        "- ": " minus ",
+        "/": " divided by ",
+        "=": " equals "
+    }
+    for symbol, word in replacements.items():
+        text = text.replace(symbol, word)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text.capitalize()
+
+def nl_to_sympy_str(text):
+    """
+    Very basic Natural Language to Math string converter.
+    For production, hook this up to a local LLM parser.
+    """
+    text = text.lower()
+    replacements = {
+        "squared": "**2",
+        "cubed": "**3",
+        "to the power of": "**",
+        "plus": "+",
+        "minus": "-",
+        "times": "*",
+        "divided by": "/",
+        "equals": "=",
+        " equals ": "=",
+        " and ": " "
+    }
+    for word, symbol in replacements.items():
+        text = text.replace(word, symbol)
+    # Fix instances like "2 x" -> "2*x" or "5x" -> "5*x"
+    text = re.sub(r'(\d)\s*([a-zA-Z])', r'\1*\2', text)
+    return text
+
+def train_ebm(save_path="math_ebm.pt", db_conn=None):
+    if db_conn is None:
+        db_conn = init_db()
+        
     print("Generating SymPy dataset of correct identities and adversarials...")
     MAX_NODES = 30
     dataset, tokenizer = generate_sympy_data(1000, max_nodes=MAX_NODES)
+    
+    print("Logging mathematically sound ground-truth generation to knowledge database...")
+    for item in dataset:
+        p_math = str(item["problem_expr"])
+        s_math = str(item["correct_expr"])
+        p_nl = sympy_to_nl_str(item["problem_expr"])
+        s_nl = sympy_to_nl_str(item["correct_expr"])
+        # Log to db, energy initially 0.0 or lowest theoretical bound
+        log_to_db(db_conn, p_nl, p_math, s_nl, s_math, 0.0, True)
     
     # Target 6GB VRAM constraint Memory Optimizations
     BATCH_SIZE = 16 
@@ -274,40 +385,30 @@ def train_ebm():
         for i in range(0, len(dataset), BATCH_SIZE):
             batch = dataset[i:i+BATCH_SIZE]
             
-            # 1. Prepare Problems and Ground-Truth Solutions Graph structures
             x_nodes = torch.stack([item["problem_nodes"] for item in batch]).to(device)
             x_adj = torch.stack([item["problem_adj"] for item in batch]).to(device)
             
             y_pos_discrete = torch.stack([item["correct_nodes"] for item in batch]).to(device)
             y_pos_adj = torch.stack([item["correct_adj"] for item in batch]).to(device)
             
-            # Make the positive nodes "soft" continuous tokens for bridge compatibility
             y_pos_soft = F.one_hot(y_pos_discrete, num_classes=model.embedding.num_embeddings).float()
             
-            # 2. Prepare Adversarial starting points 
             y_neg_init_discrete = torch.stack([item["adversarial_nodes"] for item in batch]).to(device)
             y_neg_adj = torch.stack([item["adversarial_adj"] for item in batch]).to(device)
             
             y_neg_init = F.one_hot(y_neg_init_discrete, num_classes=model.embedding.num_embeddings).float()
-            
-            # Slightly scale logits to give model room to sample new tokens during Langevin
             y_neg_init = y_neg_init * 5.0 + torch.randn_like(y_neg_init) 
             
-            # Generate Negative pairs internally via Langevin Dynamics (optimizing node tokens only)
             y_neg_logits = sample_langevin(model, x_nodes, x_adj, y_neg_init, y_neg_adj, steps=15, step_size=0.1, temp=1.0)
             y_neg_soft = F.gumbel_softmax(y_neg_logits, tau=1.0, hard=False)
             
-            model.train() # Resume training after MCMC freeze
+            model.train() 
             
-            # 3. Compute Energies for both Graphs
             pos_energy = model(x_nodes, x_adj, y_pos_soft, y_pos_adj)
             neg_energy = model(x_nodes, x_adj, y_neg_soft, y_neg_adj)
             
-            # 4. Contrastive Divergence Loss: Minimize Pos energy, Maximize Neg energy.
-            # Adds L2 Regularization term on the energy to keep scalar values stable.
             loss = (pos_energy - neg_energy).mean() + 0.1 * (pos_energy**2 + neg_energy**2).mean()
             
-            # Gradient Accumulation execution
             loss = loss / GRAD_ACCUM_STEPS
             loss.backward()
             
@@ -320,6 +421,99 @@ def train_ebm():
                 
         avg_loss = total_loss / (len(dataset)//BATCH_SIZE)
         print(f"Epoch {epoch+1}/{EPOCHS} | CD Loss: {avg_loss:.4f}")
+        
+    print(f"Saving model checkpoint to {save_path}...")
+    save_checkpoint(model, tokenizer, save_path)
+    print("Training complete.")
+
+def evaluate_energy(model, tokenizer, problem_str, solution_str, device):
+    """Parses arbitrary strings into ASTs and returns the model's energy assigned to the pair."""
+    try:
+        problem_expr = sp.sympify(problem_str)
+        solution_expr = sp.sympify(solution_str)
+        
+        p_nodes, p_adj = tokenizer.encode_graph(problem_expr, max_nodes=30)
+        s_nodes, s_adj = tokenizer.encode_graph(solution_expr, max_nodes=30)
+        
+        p_nodes = p_nodes.unsqueeze(0).to(device)
+        p_adj = p_adj.unsqueeze(0).to(device)
+        s_nodes = s_nodes.unsqueeze(0).to(device)
+        s_adj = s_adj.unsqueeze(0).to(device)
+        
+        # Continuous bridge formatting
+        s_soft = F.one_hot(s_nodes, num_classes=model.embedding.num_embeddings).float()
+        
+        with torch.no_grad():
+            energy = model(p_nodes, p_adj, s_soft, s_adj)
+        return energy.item()
+    except Exception as e:
+        return f"Error parsing equations: {str(e)}"
+
+def interactive_interface():
+    print("=== Mathematical EBM Interface ===")
+    model_path = "math_ebm.pt"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    db_conn = init_db()
+    
+    if not os.path.exists(model_path):
+        print(f"Model checkpoint '{model_path}' not found. Starting training loop first...")
+        train_ebm(save_path=model_path, db_conn=db_conn)
+        
+    print("Loading model weights...")
+    model, tokenizer = load_checkpoint(model_path, device)
+    print("Model ready!")
+    print("Instructions:")
+    print("- Enter a 'Problem' (e.g., 'x squared plus 5x plus 6' or 'x**2 + 5*x + 6')")
+    print("- Enter a 'Proposed Solution' (e.g., '(x + 2) times (x + 3)')")
+    print("- Leave blank to exit.\n")
+    
+    while True:
+        try:
+            p_text = input("Problem (Natural Language or Math): ").strip()
+            if not p_text: break
+            s_text = input("Proposed Solution (Natural Language or Math): ").strip()
+            if not s_text: break
+            
+            p_math = nl_to_sympy_str(p_text)
+            s_math = nl_to_sympy_str(s_text)
+            
+            # Reconstruct proper NL representation incase user typed raw math
+            try:
+                p_nl = sympy_to_nl_str(sp.sympify(p_math))
+                s_nl = sympy_to_nl_str(sp.sympify(s_math))
+                
+                # Check for Mathematical correctness purely through SymPy 
+                is_sound = (sp.simplify(sp.sympify(p_math) - sp.sympify(s_math)) == 0)
+            except Exception as e:
+                p_nl = p_text
+                s_nl = s_text
+                is_sound = False
+            
+            print(f"\nNatural Language (Problem): {p_nl}")
+            print(f"Parsed Math (Problem):      {p_math}")
+            print(f"Natural Language (Sol):     {s_nl}")
+            print(f"Parsed Math (Sol):          {s_math}")
+            
+            energy = evaluate_energy(model, tokenizer, p_math, s_math, device)
+            
+            if isinstance(energy, str):
+                print(f"[!] {energy}\n")
+            else:
+                print(f"==> EBM Predicted Energy: {energy:.4f}")
+                print(f"    (Mathematically sound logically: {str(is_sound).upper()})")
+                print("    (Saved to knowledge database)\n")
+                
+                log_to_db(db_conn, p_nl, p_math, s_nl, s_math, energy, is_sound)
+                
+        except KeyboardInterrupt:
+            break
+        except EOFError:
+            break
 
 if __name__ == "__main__":
-    train_ebm()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--train":
+        train_ebm()
+    else:
+        interactive_interface()
