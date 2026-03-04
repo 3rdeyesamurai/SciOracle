@@ -3,7 +3,8 @@
 An AI architecture designed for symbolic mathematical discovery using Graph Neural Networks (GNNs), Langevin Dynamics, and Contrastive Divergence, fully optimized for consumer-grade GPU constraints.
 
 ## Features
-- **Graph Neural Network (GNN)** processing of mathematical Abstract Syntax Trees (ASTs).
+- **Native LLM Tokenization** integration via HuggingFace `transformers` to optimize directly over language model vocabularies (e.g., GPT-2).
+- **Graph Neural Network (GNN)** processing of 1D sequence graphs.
 - **Langevin Dynamics MCMC** continuous optimization over discrete symbolic node representations.
 - **6GB VRAM Optimization** achieved via `torch.utils.checkpoint` memory accumulation.
 - **Arithmetic Cold Start** phase (500 epochs) before algebraic complexity is introduced.
@@ -14,12 +15,12 @@ An AI architecture designed for symbolic mathematical discovery using Graph Neur
 
 ## Prerequisites
 
-To run the training loop and CLI, you will strictly need Python 3.9+ along with PyTorch and SymPy installed.
+To run the training loop and CLI, you will strictly need Python 3.9+ along with PyTorch, SymPy, and Transformers installed.
 
 ### Setup Instructions
 Run the following in your terminal to install dependencies:
 ```bash
-pip install torch sympy
+pip install torch sympy transformers
 ```
 
 *(Note: PyTorch will automatically install either the CUDA or CPU version depending on your system's hardware configuration.)*

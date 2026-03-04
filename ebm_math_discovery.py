@@ -9,6 +9,7 @@ import sqlite3
 import json
 import argparse
 from torch.utils.checkpoint import checkpoint
+from transformers import AutoTokenizer
 
 # Task 1: Energy Network PyTorch class (GNN Version)
 
@@ -140,81 +141,58 @@ def sample_langevin(model, x_nodes, x_adj, y_logits_init, y_adj, steps=20, step_
 
 # Task 3: Training loop and SymPy dataset generator 
 
-class ASTGraphTokenizer:
-    """Tokenizer to convert SymPy AST into Node Lists and Adjacency Matrices"""
-    def __init__(self):
-        self.vocab = {"PAD": 0, "UNK": 1}
-        self.inv_vocab = {0: "PAD", 1: "UNK"}
-        self.vocab_size = 2
+class LLMSeqTokenizer:
+    """Tokenizer to convert expressions into LLM Token Sequences and 1D Adjacency Matrices"""
+    def __init__(self, model_id="gpt2"):
+        # We use a standard HuggingFace tokenizer. GPT-2 by default.
+        self.tokenizer = AutoTokenizer.from_pretrained(model_id)
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.vocab_size = self.tokenizer.vocab_size
+        self.vocab = self.tokenizer.get_vocab()
+        self.inv_vocab = {v: k for k, v in self.vocab.items()}
 
-    def add_token(self, token):
-        if token not in self.vocab:
-            self.vocab[token] = self.vocab_size
-            self.inv_vocab[self.vocab_size] = token
-            self.vocab_size += 1
-
-    def parse_ast(self, expr):
-        """Returns node labels and a list of edges (parent, child)."""
-        nodes = []
-        edges = []
+    def encode_graph(self, expr, max_nodes=50):
+        # Convert sympy expr to string and Tokenize
+        text = str(expr)
+        # We use padding="max_length" to pad directly to max_nodes
+        tokens = self.tokenizer(
+            text, 
+            truncation=True, 
+            max_length=max_nodes, 
+            padding="max_length", 
+            return_tensors="pt"
+        )
+        node_ids = tokens["input_ids"][0]
         
-        def traverse(node):
-            node_id = len(nodes)
-            
-            if isinstance(node, sp.Symbol) or isinstance(node, sp.Integer) or isinstance(node, sp.Rational):
-                nodes.append(str(node))
-            else:
-                op = node.__class__.__name__
-                nodes.append(op)
-                for arg in node.args:
-                    child_id = traverse(arg)
-                    edges.append((node_id, child_id))
-                    # Make graph undirected for better message passing
-                    edges.append((child_id, node_id))
-            return node_id
-            
-        traverse(expr)
-        return nodes, edges
-
-    def encode_graph(self, expr, max_nodes=30):
-        nodes, edges = self.parse_ast(expr)
-        
-        # Update dynamic vocabulary
-        for n in nodes:
-            self.add_token(n)
-            
-        node_ids = [self.vocab.get(n, self.vocab["UNK"]) for n in nodes]
-        
-        # Construct dense adjacency matrix
+        # Construct sequence adjacency matrix (treating the sequence as a 1D graph)
         adj = torch.zeros(max_nodes, max_nodes)
         
-        # Add self-loops to maintain current node features during message passing
-        for i in range(min(len(nodes), max_nodes)):
-            adj[i, i] = 1.0
-            
-        for u, v in edges:
-            if u < max_nodes and v < max_nodes:
-                adj[u, v] = 1.0
+        # Add self-loops and sequence edges (i-1 <-> i <-> i+1)
+        # We only add edges up to the actual sequence length, the rest are just self loops for padding
+        seq_len = min(len(self.tokenizer(text, truncation=True, max_length=max_nodes)["input_ids"]), max_nodes)
+        
+        for i in range(max_nodes):
+            adj[i, i] = 1.0 # Self Loop
+            if i < seq_len:
+                if i > 0:
+                    adj[i, i-1] = 1.0
+                if i < seq_len - 1:
+                    adj[i, i+1] = 1.0
                 
         # Degree Normalization D^-1 A
         row_sum = adj.sum(dim=1, keepdim=True)
         adj = adj / torch.clamp(row_sum, min=1e-8)
         
-        # Pad nodes sequence
-        if len(node_ids) < max_nodes:
-            node_ids += [self.vocab["PAD"]] * (max_nodes - len(node_ids))
-        else:
-            node_ids = node_ids[:max_nodes]
-            
-        return torch.tensor(node_ids, dtype=torch.long), adj
+        return node_ids.long(), adj
 
-def generate_sympy_data(num_samples=100, max_nodes=30, mode="algebraic", tokenizer=None):
+def generate_sympy_data(num_samples=100, max_nodes=50, mode="algebraic", tokenizer=None):
     """
     Generate dataset of correct pairs and adversarial mutations using SymPy.
     Supports 'arithmetic' for cold starts and 'algebraic' for complex identities.
     """
     if tokenizer is None:
-        tokenizer = ASTGraphTokenizer()
+        tokenizer = LLMSeqTokenizer()
     x = sp.Symbol('x')
     dataset = []
     raw_json_data = []
@@ -277,8 +255,6 @@ def generate_sympy_data(num_samples=100, max_nodes=30, mode="algebraic", tokeniz
 def save_checkpoint(model, tokenizer, path="math_ebm.pt"):
     torch.save({
         "model_state_dict": model.state_dict(),
-        "vocab": tokenizer.vocab,
-        "inv_vocab": tokenizer.inv_vocab,
         "vocab_size": tokenizer.vocab_size,
         "embedding_num": model.embedding.num_embeddings
     }, path)
@@ -286,13 +262,11 @@ def save_checkpoint(model, tokenizer, path="math_ebm.pt"):
 def load_checkpoint(path, device):
     checkpoint = torch.load(path, map_location=device, weights_only=False)
     # Reconstruct tokenizer
-    tokenizer = ASTGraphTokenizer()
-    tokenizer.vocab = checkpoint["vocab"]
-    tokenizer.inv_vocab = checkpoint["inv_vocab"]
-    tokenizer.vocab_size = checkpoint["vocab_size"]
+    tokenizer = LLMSeqTokenizer()
     
     # Init model
-    model = MathEBM(vocab_size=1000, d_model=256, num_layers=4).to(device)
+    # Maintain original parameters using checkpoint definitions
+    model = MathEBM(vocab_size=checkpoint["vocab_size"], d_model=256, num_layers=4).to(device)
     model.embedding = nn.Embedding(checkpoint["embedding_num"], 256).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
@@ -375,7 +349,7 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False):
     print(f"Training on device: {device}")
     
     MAX_NODES = 50 # Increased max_nodes to accommodate larger generated trees
-    tokenizer = ASTGraphTokenizer()
+    tokenizer = LLMSeqTokenizer()
     
     print("Generating Cold Start Arithmetic Dataset...")
     arith_dataset, tokenizer, _ = generate_sympy_data(2000, max_nodes=MAX_NODES, mode="arithmetic", tokenizer=tokenizer)
@@ -403,10 +377,10 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False):
     GRAD_ACCUM_STEPS = 4 
     
     # 256 dim fits comfortably within 6GB threshold
-    model = MathEBM(vocab_size=1000, d_model=256, num_layers=4).to(device)
+    model = MathEBM(vocab_size=tokenizer.vocab_size, d_model=256, num_layers=4).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5)
     
-    # Resize embedding layer to fit the dynamic token vocabulary exactly
+    # Resize embedding layer to fit the LLM token vocabulary exactly (adding buffer just in case)
     model.embedding = nn.Embedding(tokenizer.vocab_size + 100, 256).to(device)
     
     def run_training_loop(dataset, epochs, phase_name):
@@ -475,8 +449,8 @@ def evaluate_energy(model, tokenizer, problem_str, solution_str, device):
         problem_expr = sp.sympify(problem_str)
         solution_expr = sp.sympify(solution_str)
         
-        p_nodes, p_adj = tokenizer.encode_graph(problem_expr, max_nodes=30)
-        s_nodes, s_adj = tokenizer.encode_graph(solution_expr, max_nodes=30)
+        p_nodes, p_adj = tokenizer.encode_graph(problem_expr, max_nodes=50)
+        s_nodes, s_adj = tokenizer.encode_graph(solution_expr, max_nodes=50)
         
         p_nodes = p_nodes.unsqueeze(0).to(device)
         p_adj = p_adj.unsqueeze(0).to(device)
