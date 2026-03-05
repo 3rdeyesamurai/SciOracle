@@ -6,12 +6,13 @@ import yaml
 from state_manager import SciOracleStateManager
 from skills.symbolic_log import execute as symbolic_execute
 from skills.ebm_solve import execute as ebm_execute
+from openclaw_interface import OpenClawBridge
 
 def load_config():
     with open("config.yaml", "r") as f:
         return yaml.safe_load(f)
 
-def run_oracle_coder(state_manager: SciOracleStateManager):
+def run_oracle_coder(state_manager: SciOracleStateManager, bridge: OpenClawBridge):
     """
     Simulates the OpenClaw Oracle_Coder Sub-Agent.
     Running offloaded to system RAM (qwen2.5-coder:32b).
@@ -31,6 +32,7 @@ def run_oracle_coder(state_manager: SciOracleStateManager):
                 "validation_status": "validating",
                 "iteration_count": state.get("iteration_count", 0) + 1
             })
+            bridge.push_state(state_manager.read_state(), source="oracle_coder")
             
         elif status == "failed":
             # Self-Correction Loop
@@ -45,10 +47,11 @@ def run_oracle_coder(state_manager: SciOracleStateManager):
                 "validation_errors": [], # clear active errors for the retry
                 "iteration_count": state.get("iteration_count", 0) + 1
             })
+            bridge.push_state(state_manager.read_state(), source="oracle_coder")
             
         time.sleep(1)
 
-def run_symbolic_validator(state_manager: SciOracleStateManager):
+def run_symbolic_validator(state_manager: SciOracleStateManager, bridge: OpenClawBridge):
     """
     Simulates the OpenClaw Symbolic_Validator Sub-Agent.
     Must run on CPU-bound threads (i7-9750H) to prevent GPU crashes if Coder is active.
@@ -62,10 +65,11 @@ def run_symbolic_validator(state_manager: SciOracleStateManager):
             # Execute the Skill
             result_msg = symbolic_execute()
             print(f"[Symbolic_Validator] {result_msg}")
+            bridge.push_state(state_manager.read_state(), source="symbolic_validator")
             
         time.sleep(1)
 
-def run_ebm_solver(state_manager: SciOracleStateManager, vram_cap: int):
+def run_ebm_solver(state_manager: SciOracleStateManager, bridge: OpenClawBridge, vram_cap: int):
     """
     Simulates the OpenClaw EBM_Solver Sub-Agent.
     Runs on VRAM.
@@ -80,6 +84,7 @@ def run_ebm_solver(state_manager: SciOracleStateManager, vram_cap: int):
             print("[EBM_Solver] Executing EBM Minimization on VRAM...")
             result_msg = ebm_execute()
             print(f"[EBM_Solver] {result_msg}")
+            bridge.push_state(state_manager.read_state(), source="ebm_solver")
             
             # Release hardware lock
             state_manager.update_state({"hardware_locks": {"gpu_in_use": False}})
@@ -97,6 +102,28 @@ def run_ebm_solver(state_manager: SciOracleStateManager, vram_cap: int):
                 
         time.sleep(2)
 
+
+def run_openclaw_sync(state_manager: SciOracleStateManager, bridge: OpenClawBridge):
+    """Synchronize state and ingest OpenClaw commands when integration is enabled."""
+    if not bridge.is_active():
+        print("[OpenClaw_Bridge] Disabled. Running local-only mode.")
+        return
+
+    print(f"[OpenClaw_Bridge] Connected target: {bridge.base_url}")
+    while True:
+        state = state_manager.read_state()
+        hb = bridge.send_heartbeat(state)
+        if not hb.get("ok", True):
+            print(f"[OpenClaw_Bridge] Heartbeat warning: {hb.get('error')}")
+
+        commands = bridge.fetch_commands()
+        for command in commands:
+            if bridge.apply_command(state_manager, command):
+                print(f"[OpenClaw_Bridge] Applied command: {command.get('type')}")
+                bridge.push_state(state_manager.read_state(), source="openclaw_command")
+
+        time.sleep(2)
+
 def main():
     print("Initializing SciOracle Master Loop...")
     config = load_config()
@@ -104,6 +131,7 @@ def main():
     
     # Initialize State-First Protocol
     state_manager = SciOracleStateManager(config.get("system", {}).get("memory", {}).get("file", "state.json"))
+    bridge = OpenClawBridge(config.get("openclaw", {}))
     
     # Check if this is a test run
     if "--test-run" in sys.argv:
@@ -113,20 +141,24 @@ def main():
     # Spawn Sub-Agents across 12 threads using Multiprocessing
     # Oracle on RAM, Validator on CPU, Solver on GPU
     
-    p_coder = multiprocessing.Process(target=run_oracle_coder, args=(state_manager,))
-    p_validator = multiprocessing.Process(target=run_symbolic_validator, args=(state_manager,))
-    p_solver = multiprocessing.Process(target=run_ebm_solver, args=(state_manager, vram_cap))
+    p_bridge = multiprocessing.Process(target=run_openclaw_sync, args=(state_manager, bridge))
+    p_coder = multiprocessing.Process(target=run_oracle_coder, args=(state_manager, bridge))
+    p_validator = multiprocessing.Process(target=run_symbolic_validator, args=(state_manager, bridge))
+    p_solver = multiprocessing.Process(target=run_ebm_solver, args=(state_manager, bridge, vram_cap))
     
     try:
+        p_bridge.start()
         p_coder.start()
         p_validator.start()
         p_solver.start()
         
+        p_bridge.join()
         p_coder.join()
         p_validator.join()
         p_solver.join()
     except KeyboardInterrupt:
         print("Shutting down SciOracle Master Loop.")
+        p_bridge.terminate()
         p_coder.terminate()
         p_validator.terminate()
         p_solver.terminate()

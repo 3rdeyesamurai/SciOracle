@@ -135,6 +135,26 @@ Using Docker encapsulates the entire environment, making it easy to deploy acros
    ```
    *This command runs the container, enables GPU access via `--gpus all`, and mounts the local `discoveries/` folder so generated math logs and visual proofs are securely mirrored to your host machine.*
 
+### OpenClaw Direct Interface (OpenDeepClaw Bridge)
+
+SciOracle now includes a direct bridge module (`openclaw_interface.py`) that can push local agent state and receive remote commands from an OpenClaw/OpenDeepClaw-compatible orchestrator.
+
+1. Update `config.yaml` in the `openclaw` section:
+   - `enabled: true`
+   - `base_url`: URL where OpenDeepClaw API is running
+   - `agent_id`: the SciOracle agent identifier
+   - endpoint paths for state push, command pull, and heartbeat
+2. Start the SciOracle loop:
+   ```bash
+   python core_agent.py
+   ```
+3. SciOracle bridge process behavior:
+   - Sends heartbeat payload every 2 seconds
+   - Pulls command list from OpenClaw and applies supported commands (`set_conjecture`, `set_status`, `state_patch`)
+   - Pushes updated state back whenever Oracle, Validator, or EBM solver changes state
+
+This keeps SciOracle’s local `state.json` protocol intact while enabling direct remote orchestration from OpenDeepClaw.
+
 ### 2. Securely Operating with OpenClaw
 
 The integration of SciOracle with the OpenClaw framework introduces autonomous code execution and logical evaluation. Security must be prioritized.

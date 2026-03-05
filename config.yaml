@@ -28,3 +28,14 @@ system:
   memory:
     protocol: "state_first"
     file: "state.json"
+
+openclaw:
+  enabled: false
+  base_url: "http://127.0.0.1:8080"
+  agent_id: "scioracle"
+  timeout_s: 5
+  # Optional bearer token. Prefer env OPENCLAW_TOKEN in production.
+  auth_token: ""
+  push_state_path: "/api/v1/agents/{agent_id}/state"
+  pull_commands_path: "/api/v1/agents/{agent_id}/commands"
+  heartbeat_path: "/api/v1/agents/{agent_id}/heartbeat"
