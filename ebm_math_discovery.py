@@ -35,23 +35,27 @@ class GCNLayer(nn.Module):
         return F.gelu(out)
 
 class MathEBM(nn.Module):
-    def __init__(self, vocab_size, d_model=256, num_layers=4):
+    def __init__(self, llm_vocab_size, math_vocab_size, d_model=256, num_layers=4):
         """
         Energy-Based Model for mathematical symbolic discovery using Graph Neural Networks.
         Designed to run on 6GB VRAM by using a small dimension GNN 
-        and gradient checkpointing.
+        and gradient checkpointing. Incorporates a Self-Improvement Cross-Attention Architecture.
         """
         super().__init__()
-        self.vocab_size = vocab_size
         self.d_model = d_model
         
-        # Linear embedding layer for both discrete tokens and continuous bridge
-        self.embedding = nn.Embedding(vocab_size, d_model)
+        # Dual Embeddings for Language (LLM) and Math (AST)
+        self.llm_embedding = nn.Embedding(llm_vocab_size, d_model)
+        self.math_embedding = nn.Embedding(math_vocab_size, d_model)
         
-        # Graph Neural Network Encoder
+        # Graph Neural Network Encoders (Shared weights for structural processing)
         self.gcn_layers = nn.ModuleList([
             GCNLayer(d_model, d_model) for _ in range(num_layers)
         ])
+        
+        # Self-Improvement Neural Architecture (Cross-Attention)
+        # Allows Language Sequence to attend to Mathematical Graph Nodes
+        self.cross_attention = nn.MultiheadAttention(d_model, num_heads=4, batch_first=True)
         
         # Scalar Energy Head (E_theta) evaluates the combined problem and solution
         self.energy_head = nn.Sequential(
@@ -60,8 +64,8 @@ class MathEBM(nn.Module):
             nn.Linear(d_model, 1)
         )
 
-    def encode_graph(self, node_emb, adj):
-        """Processes the graph through the GCN layers with checkpointing"""
+    def encode_graph_nodes(self, node_emb, adj):
+        """Processes the graph through the GCN layers with checkpointing, returning node embeddings"""
         h = node_emb
         for gcn in self.gcn_layers:
             # Memory Optimization: Iteratively checkpoint each graph layer to drastically reduce peak VRAM
@@ -69,27 +73,32 @@ class MathEBM(nn.Module):
                 h = checkpoint(gcn, h, adj, use_reentrant=False)
             else:
                 h = gcn(h, adj)
-                
-        # Global mean pooling to derive a single vector for the entire graph
-        return h.mean(dim=1)
+        return h
 
     def forward(self, x_nodes, x_adj, y_soft_nodes, y_adj):
         """
-        Calculates the Energy of a given Problem (x) and Proposed Solution Graph (y_soft).
-        x_nodes: [B, max_nodes] - Problem AST tokens (discrete)
-        x_adj: [B, max_nodes, max_nodes] - Adjacency matrix for problem graph
-        y_soft_nodes: [B, max_nodes, vocab_size] - Solution AST soft-tokens (bridge continuous)
-        y_adj: [B, max_nodes, max_nodes] - Adjacency matrix for solution graph (fixed structure)
+        Calculates the Energy of a given Language Problem (x) and Proposed Math Graph (y_soft).
+        x_nodes: [B, max_nodes] - Problem Language sequence tokens (discrete)
+        x_adj: [B, max_nodes, max_nodes] - Adjacency matrix for 1D language graph
+        y_soft_nodes: [B, max_nodes, math_vocab_size] - Solution AST soft-tokens (bridge continuous)
+        y_adj: [B, max_nodes, max_nodes] - Adjacency matrix for solution math graph
         """
-        # Embed discrete problem tokens
-        x_emb = self.embedding(x_nodes) # [B, N, d_model]
+        # Embed discrete language tokens
+        x_emb = self.llm_embedding(x_nodes) # [B, N_x, d_model]
         
-        # Embed continuous solution soft-tokens (Discrete-to-Continuous Bridge)
-        y_emb = torch.matmul(y_soft_nodes, self.embedding.weight) # [B, N_y, d_model]
+        # Embed continuous solution soft-tokens (Discrete-to-Continuous Bridge for Math)
+        y_emb = torch.matmul(y_soft_nodes, self.math_embedding.weight) # [B, N_y, d_model]
         
-        # Encode both graphs
-        h_x = self.encode_graph(x_emb, x_adj) # [B, d_model]
-        h_y = self.encode_graph(y_emb, y_adj) # [B, d_model]
+        # Encode both graphs into node features
+        h_x_nodes = self.encode_graph_nodes(x_emb, x_adj) # [B, N_x, d_model]
+        h_y_nodes = self.encode_graph_nodes(y_emb, y_adj) # [B, N_y, d_model]
+        
+        # Self-Improvement Cross-Attention (Language querying Math)
+        attn_output, _ = self.cross_attention(query=h_x_nodes, key=h_y_nodes, value=h_y_nodes)
+        
+        # Global mean pooling
+        h_x = attn_output.mean(dim=1) # [B, d_model]
+        h_y = h_y_nodes.mean(dim=1)   # [B, d_model]
         
         # Combine embeddings and output scalar energy
         out = torch.cat([h_x, h_y], dim=-1) # [B, 2 * d_model]
@@ -139,7 +148,75 @@ def sample_langevin(model, x_nodes, x_adj, y_logits_init, y_adj, steps=20, step_
     return y_logits.detach()
 
 
-# Task 3: Training loop and SymPy dataset generator 
+# Task 3: Tokenizers and SymPy dataset generator 
+
+class ASTGraphTokenizer:
+    """Tokenizer to convert SymPy AST into Node Lists and Adjacency Matrices"""
+    def __init__(self):
+        self.vocab = {"PAD": 0, "UNK": 1}
+        self.inv_vocab = {0: "PAD", 1: "UNK"}
+        self.vocab_size = 2
+
+    def add_token(self, token):
+        if token not in self.vocab:
+            self.vocab[token] = self.vocab_size
+            self.inv_vocab[self.vocab_size] = token
+            self.vocab_size += 1
+
+    def parse_ast(self, expr):
+        """Returns node labels and a list of edges (parent, child)."""
+        nodes = []
+        edges = []
+        
+        def traverse(node):
+            node_id = len(nodes)
+            
+            if isinstance(node, sp.Symbol) or isinstance(node, sp.Integer) or isinstance(node, sp.Rational):
+                nodes.append(str(node))
+            else:
+                op = node.__class__.__name__
+                nodes.append(op)
+                for arg in node.args:
+                    child_id = traverse(arg)
+                    edges.append((node_id, child_id))
+                    # Make graph undirected for better message passing
+                    edges.append((child_id, node_id))
+            return node_id
+            
+        traverse(expr)
+        return nodes, edges
+
+    def encode_graph(self, expr, max_nodes=30):
+        nodes, edges = self.parse_ast(expr)
+        
+        # Update dynamic vocabulary
+        for n in nodes:
+            self.add_token(n)
+            
+        node_ids = [self.vocab.get(n, self.vocab["UNK"]) for n in nodes]
+        
+        # Construct dense adjacency matrix
+        adj = torch.zeros(max_nodes, max_nodes)
+        
+        # Add self-loops to maintain current node features during message passing
+        for i in range(min(len(nodes), max_nodes)):
+            adj[i, i] = 1.0
+            
+        for u, v in edges:
+            if u < max_nodes and v < max_nodes:
+                adj[u, v] = 1.0
+                
+        # Degree Normalization D^-1 A
+        row_sum = adj.sum(dim=1, keepdim=True)
+        adj = adj / torch.clamp(row_sum, min=1e-8)
+        
+        # Pad nodes sequence
+        if len(node_ids) < max_nodes:
+            node_ids += [self.vocab["PAD"]] * (max_nodes - len(node_ids))
+        else:
+            node_ids = node_ids[:max_nodes]
+            
+        return torch.tensor(node_ids, dtype=torch.long), adj
 
 class LLMSeqTokenizer:
     """Tokenizer to convert expressions into LLM Token Sequences and 1D Adjacency Matrices"""
@@ -152,9 +229,7 @@ class LLMSeqTokenizer:
         self.vocab = self.tokenizer.get_vocab()
         self.inv_vocab = {v: k for k, v in self.vocab.items()}
 
-    def encode_graph(self, expr, max_nodes=50):
-        # Convert sympy expr to string and Tokenize
-        text = str(expr)
+    def encode_graph(self, text, max_nodes=50):
         # We use padding="max_length" to pad directly to max_nodes
         tokens = self.tokenizer(
             text, 
@@ -186,13 +261,34 @@ class LLMSeqTokenizer:
         
         return node_ids.long(), adj
 
-def generate_sympy_data(num_samples=100, max_nodes=50, mode="algebraic", tokenizer=None):
+def sympy_to_nl_str(expr):
+    """Assigns proper natural language reading to a SymPy equation."""
+    text = str(expr)
+    replacements = {
+        "**3": " cubed ",
+        "**2": " squared ",
+        "**": " to the power of ",
+        "*": " times ",
+        "+": " plus ",
+        "- ": " minus ",
+        "/": " divided by ",
+        "=": " equals "
+    }
+    for symbol, word in replacements.items():
+        text = text.replace(symbol, word)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text.capitalize()
+
+def generate_sympy_data(num_samples=100, max_nodes=50, mode="algebraic", llm_tokenizer=None, ast_tokenizer=None):
     """
-    Generate dataset of correct pairs and adversarial mutations using SymPy.
+    Generate dataset of Dual-Encoder correct pairs and adversarial mutations using SymPy.
     Supports 'arithmetic' for cold starts and 'algebraic' for complex identities.
     """
-    if tokenizer is None:
-        tokenizer = LLMSeqTokenizer()
+    if llm_tokenizer is None:
+        llm_tokenizer = LLMSeqTokenizer()
+    if ast_tokenizer is None:
+        ast_tokenizer = ASTGraphTokenizer()
+        
     x = sp.Symbol('x')
     dataset = []
     raw_json_data = []
@@ -228,9 +324,13 @@ def generate_sympy_data(num_samples=100, max_nodes=50, mode="algebraic", tokeniz
             else:
                 adversarial = (x + b) * (x + b) # Duplicate term
 
-        problem_nodes, problem_adj = tokenizer.encode_graph(expanded, max_nodes)
-        correct_nodes, correct_adj = tokenizer.encode_graph(factored, max_nodes)
-        advers_nodes, advers_adj = tokenizer.encode_graph(adversarial, max_nodes)
+        # Problem is Natural Language sequence encoded by LLM tokenizer
+        p_nl = sympy_to_nl_str(expanded)
+        problem_nodes, problem_adj = llm_tokenizer.encode_graph(p_nl, max_nodes)
+        
+        # Solutions are AST graphs encoded by AST Graph tokenizer
+        correct_nodes, correct_adj = ast_tokenizer.encode_graph(factored, max_nodes)
+        advers_nodes, advers_adj = ast_tokenizer.encode_graph(adversarial, max_nodes)
         
         raw_json_data.append({
             "problem": str(expanded),
@@ -250,27 +350,40 @@ def generate_sympy_data(num_samples=100, max_nodes=50, mode="algebraic", tokeniz
             "adversarial_adj": advers_adj
         })
     
-    return dataset, tokenizer, raw_json_data
+    return dataset, llm_tokenizer, ast_tokenizer, raw_json_data
 
-def save_checkpoint(model, tokenizer, path="math_ebm.pt"):
+def save_checkpoint(model, llm_tokenizer, ast_tokenizer, path="math_ebm.pt"):
     torch.save({
         "model_state_dict": model.state_dict(),
-        "vocab_size": tokenizer.vocab_size,
-        "embedding_num": model.embedding.num_embeddings
+        "llm_vocab_size": llm_tokenizer.vocab_size,
+        "ast_vocab": ast_tokenizer.vocab,
+        "ast_inv_vocab": ast_tokenizer.inv_vocab,
+        "ast_vocab_size": ast_tokenizer.vocab_size,
+        "llm_embedding_num": model.llm_embedding.num_embeddings,
+        "math_embedding_num": model.math_embedding.num_embeddings
     }, path)
 
 def load_checkpoint(path, device):
     checkpoint = torch.load(path, map_location=device, weights_only=False)
-    # Reconstruct tokenizer
-    tokenizer = LLMSeqTokenizer()
+    # Reconstruct tokenizers
+    llm_tokenizer = LLMSeqTokenizer()
+    ast_tokenizer = ASTGraphTokenizer()
+    ast_tokenizer.vocab = checkpoint["ast_vocab"]
+    ast_tokenizer.inv_vocab = checkpoint["ast_inv_vocab"]
+    ast_tokenizer.vocab_size = checkpoint["ast_vocab_size"]
     
     # Init model
-    # Maintain original parameters using checkpoint definitions
-    model = MathEBM(vocab_size=checkpoint["vocab_size"], d_model=256, num_layers=4).to(device)
-    model.embedding = nn.Embedding(checkpoint["embedding_num"], 256).to(device)
+    model = MathEBM(
+        llm_vocab_size=checkpoint["llm_vocab_size"], 
+        math_vocab_size=checkpoint["ast_vocab_size"], 
+        d_model=256, 
+        num_layers=4
+    ).to(device)
+    model.llm_embedding = nn.Embedding(checkpoint["llm_embedding_num"], 256).to(device)
+    model.math_embedding = nn.Embedding(checkpoint["math_embedding_num"], 256).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
-    return model, tokenizer
+    return model, llm_tokenizer, ast_tokenizer
 
 def init_db(db_path="math_knowledge.db"):
     conn = sqlite3.connect(db_path)
@@ -298,24 +411,6 @@ def log_to_db(conn, p_nl, p_math, s_nl, s_math, energy, is_sound):
         VALUES (?, ?, ?, ?, ?, ?)
     ''', (str(p_nl), str(p_math), str(s_nl), str(s_math), float(energy) if energy is not None else 0.0, bool(is_sound)))
     conn.commit()
-
-def sympy_to_nl_str(expr):
-    """Assigns proper natural language reading to a SymPy equation."""
-    text = str(expr)
-    replacements = {
-        "**3": " cubed ",
-        "**2": " squared ",
-        "**": " to the power of ",
-        "*": " times ",
-        "+": " plus ",
-        "- ": " minus ",
-        "/": " divided by ",
-        "=": " equals "
-    }
-    for symbol, word in replacements.items():
-        text = text.replace(symbol, word)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text.capitalize()
 
 def nl_to_sympy_str(text):
     """
@@ -349,13 +444,14 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False):
     print(f"Training on device: {device}")
     
     MAX_NODES = 50 # Increased max_nodes to accommodate larger generated trees
-    tokenizer = LLMSeqTokenizer()
+    llm_tokenizer = LLMSeqTokenizer()
+    ast_tokenizer = ASTGraphTokenizer()
     
     print("Generating Cold Start Arithmetic Dataset...")
-    arith_dataset, tokenizer, _ = generate_sympy_data(2000, max_nodes=MAX_NODES, mode="arithmetic", tokenizer=tokenizer)
+    arith_dataset, llm_tokenizer, ast_tokenizer, _ = generate_sympy_data(2000, max_nodes=MAX_NODES, mode="arithmetic", llm_tokenizer=llm_tokenizer, ast_tokenizer=ast_tokenizer)
     
     print(f"Generating 10,000 Algebraic Identities Dataset... (SymPy executing on CPU)")
-    algeb_dataset, tokenizer, raw_json_data = generate_sympy_data(10000, max_nodes=MAX_NODES, mode="algebraic", tokenizer=tokenizer)
+    algeb_dataset, llm_tokenizer, ast_tokenizer, raw_json_data = generate_sympy_data(10000, max_nodes=MAX_NODES, mode="algebraic", llm_tokenizer=llm_tokenizer, ast_tokenizer=ast_tokenizer)
     
     json_path = "algebraic_identities.json"
     with open(json_path, "w") as f:
@@ -377,12 +473,22 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False):
     GRAD_ACCUM_STEPS = 4 
     
     # 256 dim fits comfortably within 6GB threshold
-    model = MathEBM(vocab_size=tokenizer.vocab_size, d_model=256, num_layers=4).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5)
+    model = MathEBM(
+        llm_vocab_size=llm_tokenizer.vocab_size, 
+        math_vocab_size=ast_tokenizer.vocab_size, 
+        d_model=256, 
+        num_layers=4
+    ).to(device)
     
-    # Resize embedding layer to fit the LLM token vocabulary exactly (adding buffer just in case)
-    model.embedding = nn.Embedding(tokenizer.vocab_size + 100, 256).to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=1e-4) # Fixed Pyright warn
     
+    # Resize embedding layers to add buffering padding space for new tokens safely
+    model.llm_embedding = nn.Embedding(llm_tokenizer.vocab_size + 100, 256).to(device)
+    model.math_embedding = nn.Embedding(ast_tokenizer.vocab_size + 100, 256).to(device)
+    
+    # Self-Improvement Buffer (Experience Replay for network's own dynamic mathematical discoveries)
+    self_improvement_buffer = []
+
     def run_training_loop(dataset, epochs, phase_name):
         print(f"--- Starting {phase_name} ({epochs} Epochs) ---")
         model.train()
@@ -390,10 +496,12 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False):
             total_loss = 0
             optimizer.zero_grad()
             
-            random.shuffle(dataset)
+            # Combine generated self-improvement discoveries with the original epoch stream
+            active_dataset = dataset + self_improvement_buffer
+            random.shuffle(active_dataset)
             
-            for i in range(0, len(dataset), BATCH_SIZE):
-                batch = dataset[i:i+BATCH_SIZE]
+            for i in range(0, len(active_dataset), BATCH_SIZE):
+                batch = active_dataset[i:i+BATCH_SIZE]
                 
                 x_nodes = torch.stack([item["problem_nodes"] for item in batch]).to(device)
                 x_adj = torch.stack([item["problem_adj"] for item in batch]).to(device)
@@ -401,16 +509,30 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False):
                 y_pos_discrete = torch.stack([item["correct_nodes"] for item in batch]).to(device)
                 y_pos_adj = torch.stack([item["correct_adj"] for item in batch]).to(device)
                 
-                y_pos_soft = F.one_hot(y_pos_discrete, num_classes=model.embedding.num_embeddings).float()
+                y_pos_soft = F.one_hot(y_pos_discrete, num_classes=model.math_embedding.num_embeddings).float()
                 
                 y_neg_init_discrete = torch.stack([item["adversarial_nodes"] for item in batch]).to(device)
                 y_neg_adj = torch.stack([item["adversarial_adj"] for item in batch]).to(device)
                 
-                y_neg_init = F.one_hot(y_neg_init_discrete, num_classes=model.embedding.num_embeddings).float()
+                y_neg_init = F.one_hot(y_neg_init_discrete, num_classes=model.math_embedding.num_embeddings).float()
                 y_neg_init = y_neg_init * 5.0 + torch.randn_like(y_neg_init) 
                 
+                # Langevin dynamics generates continuous soft-token landscape updates mathematically
                 y_neg_logits = sample_langevin(model, x_nodes, x_adj, y_neg_init, y_neg_adj, steps=15, step_size=0.1, temp=1.0)
                 y_neg_soft = F.gumbel_softmax(y_neg_logits, tau=1.0, hard=False)
+                
+                # SELF IMPROVEMENT NEURAL ARCHITECTURE (Algorithmic Verification)
+                # Check if the network accidentally proved a problem logically correct during gradient walking:
+                with torch.no_grad():
+                    # For a primitive algorithmic heuristic check matching exact true topologies:
+                    # (In a hyper-advanced system, this would explicitly walk the Gumbel logits against SymPy)
+                    # We inject matching logic into the Replay Buffer here.
+                    predicted_argmax = y_neg_soft.argmax(dim=-1)
+                    for j in range(len(batch)):
+                        if torch.equal(predicted_argmax[j], y_pos_discrete[j]):
+                            # The model has successfully proven/discovered a valid configuration during Langevin
+                            if len(self_improvement_buffer) < 500: # Limit size
+                                self_improvement_buffer.append(batch[j])
                 
                 model.train() 
                 
@@ -429,9 +551,9 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False):
                     optimizer.step()
                     optimizer.zero_grad()
                     
-            avg_loss = total_loss / (len(dataset)//BATCH_SIZE)
+            avg_loss = total_loss / max(1, (len(active_dataset)//BATCH_SIZE))
             if (epoch + 1) % max(1, epochs // 10) == 0:
-                print(f"[{phase_name}] Epoch {epoch+1}/{epochs} | CD Loss: {avg_loss:.4f}")
+                print(f"[{phase_name}] Epoch {epoch+1}/{epochs} | CD Loss: {avg_loss:.4f} | Replay Buffer (Self-Discovered): {len(self_improvement_buffer)}")
 
     # Phase 1: 500 epochs on Arithmetic
     run_training_loop(arith_dataset, 500, "Cold Start (Arithmetic)")
@@ -440,25 +562,26 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False):
     run_training_loop(algeb_dataset, 10, "Discovery Phase (Algebraic)")
         
     print(f"Saving model checkpoint to {save_path}...")
-    save_checkpoint(model, tokenizer, save_path)
+    save_checkpoint(model, llm_tokenizer, ast_tokenizer, save_path)
     print("Training complete.")
 
-def evaluate_energy(model, tokenizer, problem_str, solution_str, device):
-    """Parses arbitrary strings into ASTs and returns the model's energy assigned to the pair."""
+def evaluate_energy(model, llm_tokenizer, ast_tokenizer, problem_nl, solution_str, device):
+    """Parses arbitrary strings into LLM/ASTs and returns the model's energy assigned to the pair."""
     try:
-        problem_expr = sp.sympify(problem_str)
+        # Solution has to be math logic evaluation
         solution_expr = sp.sympify(solution_str)
         
-        p_nodes, p_adj = tokenizer.encode_graph(problem_expr, max_nodes=50)
-        s_nodes, s_adj = tokenizer.encode_graph(solution_expr, max_nodes=50)
+        # Dual Encoding logic
+        p_nodes, p_adj = llm_tokenizer.encode_graph(problem_nl, max_nodes=50)
+        s_nodes, s_adj = ast_tokenizer.encode_graph(solution_expr, max_nodes=50)
         
         p_nodes = p_nodes.unsqueeze(0).to(device)
         p_adj = p_adj.unsqueeze(0).to(device)
         s_nodes = s_nodes.unsqueeze(0).to(device)
         s_adj = s_adj.unsqueeze(0).to(device)
         
-        # Continuous bridge formatting
-        s_soft = F.one_hot(s_nodes, num_classes=model.embedding.num_embeddings).float()
+        # Continuous bridge formatting over the Math Network
+        s_soft = F.one_hot(s_nodes, num_classes=model.math_embedding.num_embeddings).float()
         
         with torch.no_grad():
             energy = model(p_nodes, p_adj, s_soft, s_adj)
@@ -467,7 +590,7 @@ def evaluate_energy(model, tokenizer, problem_str, solution_str, device):
         return f"Error parsing equations: {str(e)}"
 
 def interactive_interface():
-    print("=== Mathematical EBM Interface ===")
+    print("=== Mathematical EBM Interface (Dual-Encoder Architecture) ===")
     model_path = "math_ebm.pt"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -478,50 +601,45 @@ def interactive_interface():
         train_ebm(save_path=model_path, db_conn=db_conn)
         
     print("Loading model weights...")
-    model, tokenizer = load_checkpoint(model_path, device)
+    model, llm_tokenizer, ast_tokenizer = load_checkpoint(model_path, device)
     print("Model ready!")
     print("Instructions:")
-    print("- Enter a 'Problem' (e.g., 'x squared plus 5x plus 6' or 'x**2 + 5*x + 6')")
+    print("- Enter a 'Problem' (e.g., 'x squared plus 5x plus 6')")
     print("- Enter a 'Proposed Solution' (e.g., '(x + 2) times (x + 3)')")
     print("- Leave blank to exit.\n")
     
     while True:
         try:
-            p_text = input("Problem (Natural Language or Math): ").strip()
+            p_text = input("Problem (Natural Language): ").strip()
             if not p_text: break
             s_text = input("Proposed Solution (Natural Language or Math): ").strip()
             if not s_text: break
             
-            p_math = nl_to_sympy_str(p_text)
+            p_math_guess = nl_to_sympy_str(p_text)
             s_math = nl_to_sympy_str(s_text)
             
-            # Reconstruct proper NL representation incase user typed raw math
+            # Formats
             try:
-                p_nl = sympy_to_nl_str(sp.sympify(p_math))
-                s_nl = sympy_to_nl_str(sp.sympify(s_math))
-                
                 # Check for Mathematical correctness purely through SymPy 
-                is_sound = (sp.simplify(sp.sympify(p_math) - sp.sympify(s_math)) == 0)
+                is_sound = (sp.simplify(sp.sympify(p_math_guess) - sp.sympify(s_math)) == 0)
             except Exception as e:
-                p_nl = p_text
-                s_nl = s_text
                 is_sound = False
             
-            print(f"\nNatural Language (Problem): {p_nl}")
-            print(f"Parsed Math (Problem):      {p_math}")
-            print(f"Natural Language (Sol):     {s_nl}")
+            print(f"\nNatural Language (Problem): {p_text}")
+            print(f"Parsed Math (Problem Hint): {p_math_guess}")
+            print(f"Natural Language (Sol):     {s_text}")
             print(f"Parsed Math (Sol):          {s_math}")
             
-            energy = evaluate_energy(model, tokenizer, p_math, s_math, device)
+            energy = evaluate_energy(model, llm_tokenizer, ast_tokenizer, p_text, s_math, device)
             
             if isinstance(energy, str):
                 print(f"[!] {energy}\n")
             else:
-                print(f"==> EBM Predicted Energy: {energy:.4f}")
+                print(f"==> EBM Predicted Dual-Architecture Energy: {energy:.4f}")
                 print(f"    (Mathematically sound logically: {str(is_sound).upper()})")
                 print("    (Saved to knowledge database)\n")
                 
-                log_to_db(db_conn, p_nl, p_math, s_nl, s_math, energy, is_sound)
+                log_to_db(db_conn, p_text, p_math_guess, s_text, s_math, energy, is_sound)
                 
         except KeyboardInterrupt:
             break

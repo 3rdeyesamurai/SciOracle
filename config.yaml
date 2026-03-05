@@ -1,0 +1,30 @@
+agents:
+  Oracle_Coder:
+    role: "Code and Mathematical Conjecture Generator"
+    model: "qwen2.5-coder:32b"
+    backend: "ollama"
+    hardware_target: "system_ram"
+    description: "Generates Python code and mathematical conjectures. Offloaded to system RAM to save VRAM."
+  
+  Symbolic_Validator:
+    role: "Logical Validator"
+    model: "deepseek-r1:7b"
+    backend: "ollama"
+    hardware_target: "vram"
+    threads: "cpu_bound"
+    description: "Uses SymPy and Z3 to log logical validity. Must run on CPU-bound threads (i7-9750H) if Oracle_Coder is active to prevent GPU crashes."
+  
+  EBM_Solver:
+    role: "Energy-Based Discovery Engine"
+    model: "deepseek-r1:7b"
+    backend: "ollama"
+    hardware_target: "vram"
+    description: "Minimizes the energy of symbolic expressions to find stable discoveries."
+
+system:
+  vram_gate:
+    cap_gb: 6
+    enforce: true
+  memory:
+    protocol: "state_first"
+    file: "state.json"
