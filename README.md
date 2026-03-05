@@ -149,3 +149,26 @@ The integration of SciOracle with the OpenClaw framework introduces autonomous c
    - Never execute `core_agent.py` inside a production web server environment bearing sensitive keys without properly restricting the evaluation limits inside `skills/symbolic_log.py`.
 4. **Local LLM Backend Privacy:**
    Ensure `backend: "ollama"` is properly running in your environment before you execute OpenClaw. Because Ollama handles model inference locally on your hardware, no intellectual property (generated problem representations or Math-EBM data) ever leaves your machine, providing a secure, air-gapped mathematical discovery environment.
+
+### 3. Cloud-Based Scalable Solutions for High Computation
+
+When you want to evaluate equations much larger than 6GB of VRAM allows, or you want to process millions of algorithmic identities faster than a local GPU can handle, you can migrate to the cloud.
+
+#### 1. GPU-Optimized IaaS (AWS EC2, GCP Compute Engine)
+- **The Setup:** Rent a Virtual Machine equipped with enterprise GPUs (e.g., NVIDIA A10g, A100, or H100) and substantial system RAM (128GB+).
+- **Execution:** Deploy your exact Docker container onto this VM. Because it's a dedicated machine, you can run Ollama locally on the VM to retain the "Local LLM Backend Privacy" rule (your data stays on your isolated server).
+- **Benefit:** You can modify `config.yaml` to remove the `vram_gate` limit (or raise it to 40GB/80GB). This allows the Math-EBM's Langevin Dynamics to run massively parallel batches natively on the GPU without CPU fallback.
+
+#### 2. Cost-Effective GPU Compute Clusters (RunPod, Vast.ai, Lambda Labs)
+- **The Setup:** These platforms rent consumer and workstation GPUs (like RTX 4090s, A6000s) at a fraction of the cost of AWS/GCP.
+- **Execution:** RunPod allows you to deploy a Docker image directly to a GPU instance. You can map a cloud volume to the `/app/discoveries` folder to persist your EBM weights and SQLite databases (`math_knowledge.db`).
+- **Benefit:** Extremely cost-efficient scaling. You get 24GB-48GB of VRAM for cents on the dollar, allowing you to train on the 10,000 JSON identities exponentially faster.
+
+#### 3. Kubernetes Orchestration (EKS, GKE) for Distributed Agents
+- **The Setup:** If you intend to run *multiple* OpenClaw agents simultaneously (e.g., one agent tackling geometry, another tackling algebra).
+- **Execution:** Deploy the SciOracle container as a Kubernetes `StatefulSet` attached to persistent volumes. You can route computation tasks using a queue system (like RabbitMQ or Redis) to distribute SymPy validation workloads across dozens of CPU-only nodes, while funneling the Math-EBM training to a dedicated GPU Node Pool.
+
+#### 4. Hybrid Cloud API Approach (Computation vs. Privacy Trade-off)
+- **The Setup:** Offload the Heavy LLM (`qwen2.5-coder:32b`) inference to a managed cloud provider (e.g., changing the OpenClaw backend to use the OpenAI API, Anthropic, or an Ollama instance hosted on Azure).
+- **Execution:** Your local machine (or a cheap cloud VM) only handles the Math-EBM and SymPy AST verifications, while the heavy lifting of natural language and code generation happens via API.
+- **Trade-off:** This completely bypasses the need for massive LLM VRAM, freeing up your entire GPU for the Math-EBM. However, it violates the strict data privacy constraint, as your mathematical states and queries will be sent over the network to the LLM provider.
