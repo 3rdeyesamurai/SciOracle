@@ -3,6 +3,7 @@ import sqlite3
 import threading
 import time
 import asyncio
+import yaml
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -43,6 +44,27 @@ FIGURES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'fig
 
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
+
+def load_scaling_config():
+    config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'config.yaml'))
+    if not os.path.exists(config_path):
+        return {}
+    try:
+        with open(config_path, "r") as f:
+            return yaml.safe_load(f) or {}
+    except Exception:
+        return {}
+
+
+def resolve_runtime_training_profile(config):
+    scaling = config.get("scaling", {}) if isinstance(config, dict) else {}
+    profile_name = str(scaling.get("profile", "high")).lower()
+    use_cpu_if_no_cuda = bool(scaling.get("fallback_to_cpu", True))
+    return {
+        "profile": profile_name,
+        "overrides": scaling.get("training_overrides", {}),
+    }, use_cpu_if_no_cuda
+
 # Database upgrade for figures
 def update_db_schema():
     conn = init_db(DB_PATH)
@@ -73,17 +95,18 @@ class TrainingWorker(threading.Thread):
         
     def run(self):
         print("Starting continuous training daemon...")
+        config = load_scaling_config()
+        profile, fallback_to_cpu = resolve_runtime_training_profile(config)
+        interval = int(config.get("scaling", {}).get("background_retrain_interval_s", 10))
         while True:
             try:
-                # Runs a mini-training block then halts
-                # Use CPU=False typically, but we will pass cpu according to hardware
-                train_ebm(save_path=MODEL_PATH, use_cpu=False) 
+                train_ebm(save_path=MODEL_PATH, use_cpu=fallback_to_cpu, compute_profile=profile)
                 
                 # Signal hot reload
                 reload_model()
                 
                 # Sleep briefly
-                time.sleep(10)
+                time.sleep(interval)
             except Exception as e:
                 print(f"Training loop error: {e}")
                 time.sleep(30)

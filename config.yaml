@@ -39,3 +39,19 @@ openclaw:
   push_state_path: "/api/v1/agents/{agent_id}/state"
   pull_commands_path: "/api/v1/agents/{agent_id}/commands"
   heartbeat_path: "/api/v1/agents/{agent_id}/heartbeat"
+
+scaling:
+  # low | medium | high
+  profile: "medium"
+  # If true, training auto-falls back to CPU when CUDA is unavailable.
+  fallback_to_cpu: true
+  # FastAPI background trainer sleep interval.
+  background_retrain_interval_s: 20
+  # Tune per-agent loop latency by machine capability.
+  agent_loop_delays:
+    oracle: 1.0
+    validator: 1.0
+    ebm_solver: 2.0
+    openclaw_sync: 2.0
+  # Optional overrides merged into selected profile.
+  training_overrides: {}

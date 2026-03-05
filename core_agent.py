@@ -12,12 +12,17 @@ def load_config():
     with open("config.yaml", "r") as f:
         return yaml.safe_load(f)
 
-def run_oracle_coder(state_manager: SciOracleStateManager, bridge: OpenClawBridge):
+
+def agent_loop_delay(config, key, default_value):
+    return float(config.get("scaling", {}).get("agent_loop_delays", {}).get(key, default_value))
+
+def run_oracle_coder(state_manager: SciOracleStateManager, bridge: OpenClawBridge, config):
     """
     Simulates the OpenClaw Oracle_Coder Sub-Agent.
     Running offloaded to system RAM (qwen2.5-coder:32b).
     """
     print("[Oracle_Coder] Initialized on System RAM threads.")
+    sleep_s = agent_loop_delay(config, "oracle", 1.0)
     while True:
         state = state_manager.read_state()
         status = state.get("validation_status")
@@ -49,14 +54,15 @@ def run_oracle_coder(state_manager: SciOracleStateManager, bridge: OpenClawBridg
             })
             bridge.push_state(state_manager.read_state(), source="oracle_coder")
             
-        time.sleep(1)
+        time.sleep(sleep_s)
 
-def run_symbolic_validator(state_manager: SciOracleStateManager, bridge: OpenClawBridge):
+def run_symbolic_validator(state_manager: SciOracleStateManager, bridge: OpenClawBridge, config):
     """
     Simulates the OpenClaw Symbolic_Validator Sub-Agent.
     Must run on CPU-bound threads (i7-9750H) to prevent GPU crashes if Coder is active.
     """
     print("[Symbolic_Validator] Initialized on CPU-bound threads.")
+    sleep_s = agent_loop_delay(config, "validator", 1.0)
     while True:
         state = state_manager.read_state()
         if state.get("validation_status") == "validating":
@@ -67,14 +73,15 @@ def run_symbolic_validator(state_manager: SciOracleStateManager, bridge: OpenCla
             print(f"[Symbolic_Validator] {result_msg}")
             bridge.push_state(state_manager.read_state(), source="symbolic_validator")
             
-        time.sleep(1)
+        time.sleep(sleep_s)
 
-def run_ebm_solver(state_manager: SciOracleStateManager, bridge: OpenClawBridge, vram_cap: int):
+def run_ebm_solver(state_manager: SciOracleStateManager, bridge: OpenClawBridge, config, vram_cap: int):
     """
     Simulates the OpenClaw EBM_Solver Sub-Agent.
     Runs on VRAM.
     """
     print(f"[EBM_Solver] Initialized with VRAM Gate Cap: {vram_cap}GB")
+    sleep_s = agent_loop_delay(config, "ebm_solver", 2.0)
     while True:
         state = state_manager.read_state()
         if state.get("validation_status") == "passed" and not state.get("discovery_visualized"):
@@ -100,16 +107,17 @@ def run_ebm_solver(state_manager: SciOracleStateManager, bridge: OpenClawBridge,
                     "discovery_visualized": False
                 })
                 
-        time.sleep(2)
+        time.sleep(sleep_s)
 
 
-def run_openclaw_sync(state_manager: SciOracleStateManager, bridge: OpenClawBridge):
+def run_openclaw_sync(state_manager: SciOracleStateManager, bridge: OpenClawBridge, config):
     """Synchronize state and ingest OpenClaw commands when integration is enabled."""
     if not bridge.is_active():
         print("[OpenClaw_Bridge] Disabled. Running local-only mode.")
         return
 
     print(f"[OpenClaw_Bridge] Connected target: {bridge.base_url}")
+    sleep_s = agent_loop_delay(config, "openclaw_sync", 2.0)
     while True:
         state = state_manager.read_state()
         hb = bridge.send_heartbeat(state)
@@ -122,7 +130,7 @@ def run_openclaw_sync(state_manager: SciOracleStateManager, bridge: OpenClawBrid
                 print(f"[OpenClaw_Bridge] Applied command: {command.get('type')}")
                 bridge.push_state(state_manager.read_state(), source="openclaw_command")
 
-        time.sleep(2)
+        time.sleep(sleep_s)
 
 def main():
     print("Initializing SciOracle Master Loop...")
@@ -141,10 +149,10 @@ def main():
     # Spawn Sub-Agents across 12 threads using Multiprocessing
     # Oracle on RAM, Validator on CPU, Solver on GPU
     
-    p_bridge = multiprocessing.Process(target=run_openclaw_sync, args=(state_manager, bridge))
-    p_coder = multiprocessing.Process(target=run_oracle_coder, args=(state_manager, bridge))
-    p_validator = multiprocessing.Process(target=run_symbolic_validator, args=(state_manager, bridge))
-    p_solver = multiprocessing.Process(target=run_ebm_solver, args=(state_manager, bridge, vram_cap))
+    p_bridge = multiprocessing.Process(target=run_openclaw_sync, args=(state_manager, bridge, config))
+    p_coder = multiprocessing.Process(target=run_oracle_coder, args=(state_manager, bridge, config))
+    p_validator = multiprocessing.Process(target=run_symbolic_validator, args=(state_manager, bridge, config))
+    p_solver = multiprocessing.Process(target=run_ebm_solver, args=(state_manager, bridge, config, vram_cap))
     
     try:
         p_bridge.start()

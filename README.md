@@ -13,6 +13,7 @@ An AI architecture designed for symbolic mathematical discovery using Graph Neur
 - **Offline JSON Generation** generates 10,000 algorithmic algebraic identities.
 - **Physics Attribution Layer** tags conjectures with likely applied-physics domains (e.g., EM, QM, Thermodynamics).
 - **Discovery Declaration Pipeline** promotes low-energy, symbolically-sound conjectures to theorem/law candidates with notification logging.
+- **Hardware-Scaled Runtime Profiles** support `low`, `medium`, `high` compute modes for portability across laptops, desktops, and GPU servers.
 
 ---
 
@@ -172,6 +173,16 @@ SciOracle now supports research-oriented databasing and discovery declarations:
    ```bash
    GET /api/research/graph
    ```
+
+### Scalable Compute Configuration (Any Computer)
+
+Use the `scaling` block in `config.yaml` to adapt runtime and training footprint to available hardware:
+
+- `profile: low` for CPU-only or low-memory machines.
+- `profile: medium` for consumer GPUs and mixed workloads.
+- `profile: high` for large GPU servers.
+
+The profile automatically controls model width/depth, dataset sizes, epochs, batch sizes, and Langevin steps in `train_ebm(...)`, while agent loop delays and backend retrain intervals are also configurable for throughput tuning.
 
 ### 2. Securely Operating with OpenClaw
 

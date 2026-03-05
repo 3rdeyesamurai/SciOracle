@@ -13,6 +13,62 @@ from datetime import datetime
 from torch.utils.checkpoint import checkpoint
 from transformers import AutoTokenizer
 
+
+DEFAULT_COMPUTE_PROFILES = {
+    "low": {
+        "use_cpu": True,
+        "max_nodes": 32,
+        "d_model": 128,
+        "num_layers": 2,
+        "batch_size": 4,
+        "grad_accum_steps": 2,
+        "arith_samples": 300,
+        "algeb_samples": 1200,
+        "arith_epochs": 20,
+        "algeb_epochs": 4,
+        "langevin_steps": 6,
+    },
+    "medium": {
+        "use_cpu": False,
+        "max_nodes": 40,
+        "d_model": 192,
+        "num_layers": 3,
+        "batch_size": 8,
+        "grad_accum_steps": 2,
+        "arith_samples": 1200,
+        "algeb_samples": 5000,
+        "arith_epochs": 120,
+        "algeb_epochs": 8,
+        "langevin_steps": 10,
+    },
+    "high": {
+        "use_cpu": False,
+        "max_nodes": 50,
+        "d_model": 256,
+        "num_layers": 4,
+        "batch_size": 16,
+        "grad_accum_steps": 4,
+        "arith_samples": 2000,
+        "algeb_samples": 10000,
+        "arith_epochs": 500,
+        "algeb_epochs": 10,
+        "langevin_steps": 15,
+    },
+}
+
+
+def resolve_compute_profile(compute_profile=None):
+    """Resolve runtime scaling profile for heterogeneous hardware."""
+    if compute_profile is None:
+        return dict(DEFAULT_COMPUTE_PROFILES["high"])
+
+    profile_name = str(compute_profile.get("profile", "high")).lower()
+    base = dict(DEFAULT_COMPUTE_PROFILES.get(profile_name, DEFAULT_COMPUTE_PROFILES["high"]))
+    overrides = compute_profile.get("overrides", {}) if isinstance(compute_profile, dict) else {}
+    if isinstance(overrides, dict):
+        base.update(overrides)
+    return base
+
 # Task 1: Energy Network PyTorch class (GNN Version)
 
 class GCNLayer(nn.Module):
@@ -583,22 +639,27 @@ def nl_to_sympy_str(text):
     text = re.sub(r'(\d)\s*([a-zA-Z])', r'\1*\2', text)
     return text
 
-def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False):
+def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_profile=None):
     if db_conn is None:
         db_conn = init_db()
+
+    runtime = resolve_compute_profile(compute_profile)
+    use_cpu = bool(use_cpu or runtime.get("use_cpu", False))
         
     device = torch.device("cpu" if use_cpu or not torch.cuda.is_available() else "cuda")
     print(f"Training on device: {device}")
-    
-    MAX_NODES = 50 # Increased max_nodes to accommodate larger generated trees
+
+    MAX_NODES = int(runtime.get("max_nodes", 50))
     llm_tokenizer = LLMSeqTokenizer()
     ast_tokenizer = ASTGraphTokenizer()
-    
+    arith_samples = int(runtime.get("arith_samples", 2000))
+    algeb_samples = int(runtime.get("algeb_samples", 10000))
+
     print("Generating Cold Start Arithmetic Dataset...")
-    arith_dataset, llm_tokenizer, ast_tokenizer, _ = generate_sympy_data(2000, max_nodes=MAX_NODES, mode="arithmetic", llm_tokenizer=llm_tokenizer, ast_tokenizer=ast_tokenizer)
+    arith_dataset, llm_tokenizer, ast_tokenizer, _ = generate_sympy_data(arith_samples, max_nodes=MAX_NODES, mode="arithmetic", llm_tokenizer=llm_tokenizer, ast_tokenizer=ast_tokenizer)
     
-    print(f"Generating 10,000 Algebraic Identities Dataset... (SymPy executing on CPU)")
-    algeb_dataset, llm_tokenizer, ast_tokenizer, raw_json_data = generate_sympy_data(10000, max_nodes=MAX_NODES, mode="algebraic", llm_tokenizer=llm_tokenizer, ast_tokenizer=ast_tokenizer)
+    print(f"Generating {algeb_samples:,} Algebraic Identities Dataset... (SymPy executing on CPU)")
+    algeb_dataset, llm_tokenizer, ast_tokenizer, raw_json_data = generate_sympy_data(algeb_samples, max_nodes=MAX_NODES, mode="algebraic", llm_tokenizer=llm_tokenizer, ast_tokenizer=ast_tokenizer)
     
     json_path = "algebraic_identities.json"
     with open(json_path, "w") as f:
@@ -615,23 +676,26 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False):
         # Log to db, energy initially 0.0 or lowest theoretical bound
         log_to_db(db_conn, p_nl, p_math, s_nl, s_math, 0.0, True)
     
-    # Target 6GB VRAM constraint Memory Optimizations
-    BATCH_SIZE = 16 
-    GRAD_ACCUM_STEPS = 4 
+    BATCH_SIZE = int(runtime.get("batch_size", 16))
+    GRAD_ACCUM_STEPS = int(runtime.get("grad_accum_steps", 4))
+    d_model = int(runtime.get("d_model", 256))
+    num_layers = int(runtime.get("num_layers", 4))
+    langevin_steps = int(runtime.get("langevin_steps", 15))
+    arith_epochs = int(runtime.get("arith_epochs", 500))
+    algeb_epochs = int(runtime.get("algeb_epochs", 10))
     
-    # 256 dim fits comfortably within 6GB threshold
     model = MathEBM(
         llm_vocab_size=llm_tokenizer.vocab_size, 
         math_vocab_size=ast_tokenizer.vocab_size, 
-        d_model=256, 
-        num_layers=4
+        d_model=d_model,
+        num_layers=num_layers
     ).to(device)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=1e-4) # Fixed Pyright warn
     
     # Resize embedding layers to add buffering padding space for new tokens safely
-    model.llm_embedding = nn.Embedding(llm_tokenizer.vocab_size + 100, 256).to(device)
-    model.math_embedding = nn.Embedding(ast_tokenizer.vocab_size + 100, 256).to(device)
+    model.llm_embedding = nn.Embedding(llm_tokenizer.vocab_size + 100, d_model).to(device)
+    model.math_embedding = nn.Embedding(ast_tokenizer.vocab_size + 100, d_model).to(device)
     
     # Self-Improvement Buffer (Experience Replay for network's own dynamic mathematical discoveries)
     self_improvement_buffer = []
@@ -665,7 +729,7 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False):
                 y_neg_init = y_neg_init * 5.0 + torch.randn_like(y_neg_init) 
                 
                 # Langevin dynamics generates continuous soft-token landscape updates mathematically
-                y_neg_logits = sample_langevin(model, x_nodes, x_adj, y_neg_init, y_neg_adj, steps=15, step_size=0.1, temp=1.0)
+                y_neg_logits = sample_langevin(model, x_nodes, x_adj, y_neg_init, y_neg_adj, steps=langevin_steps, step_size=0.1, temp=1.0)
                 y_neg_soft = F.gumbel_softmax(y_neg_logits, tau=1.0, hard=False)
                 
                 # SELF IMPROVEMENT NEURAL ARCHITECTURE (Algorithmic Verification)
@@ -719,11 +783,11 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False):
             if (epoch + 1) % max(1, epochs // 10) == 0:
                 print(f"[{phase_name}] Epoch {epoch+1}/{epochs} | CD Loss: {avg_loss:.4f} | Replay Buffer (Self-Discovered): {len(self_improvement_buffer)}")
 
-    # Phase 1: 500 epochs on Arithmetic
-    run_training_loop(arith_dataset, 500, "Cold Start (Arithmetic)")
+    # Phase 1: arithmetic warm-up
+    run_training_loop(arith_dataset, arith_epochs, "Cold Start (Arithmetic)")
     
-    # Phase 2: 10 epochs on Algebraic dataset
-    run_training_loop(algeb_dataset, 10, "Discovery Phase (Algebraic)")
+    # Phase 2: algebraic discovery
+    run_training_loop(algeb_dataset, algeb_epochs, "Discovery Phase (Algebraic)")
         
     print(f"Saving model checkpoint to {save_path}...")
     save_checkpoint(model, llm_tokenizer, ast_tokenizer, save_path)
