@@ -35,6 +35,47 @@ pip install torch sympy transformers
 
 ## 🚀 How to Run
 
+### Beginner Path Checklist (First Successful Run)
+
+Use this list if you are new to SciOracle and want a safe first success.
+
+1. **Create environment + install deps**
+   - `python 3.10+`
+   - `pip install torch sympy transformers z3-solver pyyaml fastapi uvicorn pymupdf`
+2. **Confirm baseline config**
+   - Open `config.yaml`
+   - Keep `openclaw.enabled: false` for local-only run
+   - Set `scaling.profile: low` for CPU-only machines
+3. **Run import smoke check**
+   - `python -m compileall ebm_math_discovery.py backend/app.py core_agent.py skills/symbolic_log.py skills/ebm_solve.py`
+4. **Initialize with training (small profile)**
+   - `python ebm_math_discovery.py --train --cpu`
+5. **Try interactive CLI**
+   - `python ebm_math_discovery.py`
+   - Example:
+     - Problem: `x squared plus 5x plus 6`
+     - Solution: `(x + 2) times (x + 3)`
+6. **Start API server**
+   - `uvicorn backend.app:app --host 0.0.0.0 --port 8000`
+   - Check `GET /api/status`
+7. **Run one research query**
+   - `POST /api/query`
+   - Then inspect `GET /api/research/graph`
+8. **Enable OpenClaw only after local success**
+   - Set `openclaw.enabled: true`
+   - Fill `base_url`, `agent_id`, and endpoint paths
+9. **Inspect output artifacts**
+   - `math_knowledge.db`
+   - `discoveries/math_log.jsonl`
+   - `discoveries/proof_attempts.jsonl`
+   - `discoveries/discovery_notifications.jsonl`
+
+### Developer Architecture Diagram
+
+For a full runtime diagram with dataflow and integration boundaries, see:
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+
 ### 1. Training the Model (Database & Serialization Pipeline)
 Before you can interact with the Mathematical CLI, you must populate the weights and database logic using the training flag. 
 
