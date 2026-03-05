@@ -18,8 +18,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from ebm_math_discovery import (
     MathEBM, LLMSeqTokenizer, ASTGraphTokenizer, load_checkpoint,
     train_ebm, init_db, log_to_db, evaluate_energy, sympy_to_nl_str, nl_to_sympy_str,
-    declare_theorem_if_sound
+    declare_theorem_if_sound, infer_physics_application, retrieve_analogical_conjectures
 )
+from state_manager import SciOracleStateManager
 import sympy as sp
 
 app = FastAPI(title="SciOracle Math EBM Platform")
@@ -41,6 +42,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MODEL_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'math_ebm.pt'))
 DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'math_knowledge.db'))
 FIGURES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'figures'))
+STATE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'state.json'))
 
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
@@ -120,6 +122,10 @@ class QueryRequest(BaseModel):
     problem: str
     solution: str
 
+class ChatRequest(BaseModel):
+    message: str
+    proposed_solution: str | None = None
+
 @app.get("/api/status")
 def get_status():
     return {
@@ -162,6 +168,40 @@ def evaluate_query(req: QueryRequest):
         "is_sound": is_sound,
         "discovery_declaration": declaration
     }
+
+@app.post("/api/chat")
+def chat_research(req: ChatRequest):
+    """Conversational context endpoint that stores context and suggests symbolic seeds."""
+    manager = SciOracleStateManager(STATE_PATH)
+    state = manager.read_state()
+    history = state.get("conversation_context", [])
+    history.append({"role": "user", "content": req.message})
+    history = history[-20:]
+
+    domain, attribution = infer_physics_application(req.message, req.message, req.proposed_solution or "")
+
+    conn = sqlite3.connect(DB_PATH)
+    analogs = retrieve_analogical_conjectures(conn, physics_domain=domain if domain != "symbolic_algebra" else None, limit=5)
+    conn.close()
+
+    manager.update_state({
+        "conversation_context": history,
+        "target_physics_domain": domain if domain != "symbolic_algebra" else None,
+    })
+
+    response = {
+        "message": req.message,
+        "inferred_domain": domain,
+        "attribution_method": attribution,
+        "analogical_candidates": analogs,
+        "context_window": len(history),
+    }
+
+    if req.proposed_solution and MODEL is not None:
+        query = QueryRequest(problem=req.message, solution=req.proposed_solution)
+        response["evaluation"] = evaluate_query(query)
+
+    return response
 
 @app.get("/api/research/graph")
 def research_graph_summary(limit: int = 200):

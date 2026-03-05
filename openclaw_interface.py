@@ -109,6 +109,7 @@ class OpenClawBridge:
         - run_ablation: sets ablation request payload
         - request_counterexample: requests adversarial proof test
         - promote_candidate / demote_candidate: updates declaration state
+        - set_context: append conversational context and optional physics target
         """
         cmd_type = command.get("type")
         if cmd_type == "set_conjecture":
@@ -141,6 +142,18 @@ class OpenClawBridge:
 
         if cmd_type == "demote_candidate":
             state_manager.update_state({"law_declared": False, "promotion_note": command.get("note", "manual_demotion")})
+            return True
+
+        if cmd_type == "set_context":
+            payload = command.get("payload", {}) if isinstance(command.get("payload"), dict) else {}
+            current = state_manager.read_state().get("conversation_context", [])
+            item = payload.get("message")
+            if item:
+                current.append({"role": payload.get("role", "system"), "content": item})
+            update = {"conversation_context": current[-20:]}
+            if payload.get("target_physics_domain"):
+                update["target_physics_domain"] = payload.get("target_physics_domain")
+            state_manager.update_state(update)
             return True
 
         return False

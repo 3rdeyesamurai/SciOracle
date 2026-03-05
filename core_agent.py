@@ -8,7 +8,7 @@ from state_manager import SciOracleStateManager
 from skills.symbolic_log import execute as symbolic_execute
 from skills.ebm_solve import execute as ebm_execute
 from openclaw_interface import OpenClawBridge
-from ebm_math_discovery import init_db, retrieve_analogical_conjectures
+from ebm_math_discovery import init_db, retrieve_analogical_conjectures, load_formula_corpus
 
 def load_config():
     with open("config.yaml", "r") as f:
@@ -26,6 +26,7 @@ def run_oracle_coder(state_manager: SciOracleStateManager, bridge: OpenClawBridg
     print("[Oracle_Coder] Initialized on System RAM threads.")
     sleep_s = agent_loop_delay(config, "oracle", 1.0)
     db = init_db("math_knowledge.db")
+    formula_corpus = load_formula_corpus()
 
     def propose_conjecture(state):
         domain = state.get("target_physics_domain")
@@ -36,10 +37,18 @@ def run_oracle_coder(state_manager: SciOracleStateManager, bridge: OpenClawBridg
             "m*a = F",
             "V/R = I",
         ]
+        context_text = " ".join([m.get("content", "") for m in state.get("conversation_context", [])[-6:]]).lower()
+        corpus_matches = [
+            f"{row.get('problem', 'x')} = {row.get('solution', 'x')}"
+            for row in formula_corpus
+            if not domain or row.get("domain") == domain or row.get("domain") in context_text
+        ]
         if analogs:
             pick = random.choice(analogs)
             mutated = f"{pick['problem_math']} = {pick['solution_math']}"
             return mutated, pick.get("signature")
+        if corpus_matches:
+            return random.choice(corpus_matches), None
         return random.choice(seeds), None
 
     while True:

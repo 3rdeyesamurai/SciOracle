@@ -18,6 +18,8 @@ class SciOracleStateManager:
             "generated_code": None,
             "validation_status": "pending",
             "validation_errors": [],
+            "conversation_context": [],
+            "target_physics_domain": None,
             "proof_status": "unverified",
             "counterexample_trace": None,
             "ebm_energy": None,

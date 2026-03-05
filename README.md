@@ -16,6 +16,8 @@ An AI architecture designed for symbolic mathematical discovery using Graph Neur
 - **Hardware-Scaled Runtime Profiles** support `low`, `medium`, `high` compute modes for portability across laptops, desktops, and GPU servers.
 - **Formal Proof Layer (SymPy→Z3 subset)** validates supported symbolic conjectures with counterexample trace certificates.
 - **Calibration + Uncertainty** converts raw energy into confidence and abstains as `unknown` in low-confidence bands.
+- **Formula Corpus Expansion** augments training with a cross-domain formula library (`formula_corpus.json`) for broader symbolic coverage.
+- **Conversational Context Memory** stores chat context and uses it to infer domains and retrieve analogical conjectures (`POST /api/chat`).
 
 ---
 
@@ -220,6 +222,11 @@ SciOracle now supports research-oriented databasing and discovery declarations:
    ```bash
    GET /api/research/lineage
    ```
+5. Use conversational research endpoint:
+   ```bash
+   POST /api/chat
+   ```
+   This updates `state.json` context memory and returns domain inference + analogical candidate formulas.
 
 ### Scalable Compute Configuration (Any Computer)
 

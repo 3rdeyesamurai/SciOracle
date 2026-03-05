@@ -70,6 +70,25 @@ def resolve_compute_profile(compute_profile=None):
         base.update(overrides)
     return base
 
+
+def load_formula_corpus(path="formula_corpus.json"):
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def formula_to_sympy_safe(expr_text):
+    """Parse formula text safely into a SymPy expression fallback."""
+    try:
+        return sp.sympify(expr_text)
+    except Exception:
+        return sp.Symbol(str(expr_text).replace(" ", "_"))
+
 # Task 1: Energy Network PyTorch class (GNN Version)
 
 class GCNLayer(nn.Module):
@@ -353,7 +372,7 @@ def sympy_to_nl_str(expr):
     text = re.sub(r'\s+', ' ', text).strip()
     return text.capitalize()
 
-def generate_sympy_data(num_samples=100, max_nodes=50, mode="algebraic", llm_tokenizer=None, ast_tokenizer=None):
+def generate_sympy_data(num_samples=100, max_nodes=50, mode="algebraic", llm_tokenizer=None, ast_tokenizer=None, formula_corpus=None):
     """
     Generate dataset of Dual-Encoder correct pairs and adversarial mutations using SymPy.
     Supports 'arithmetic' for cold starts and 'algebraic' for complex identities.
@@ -373,6 +392,8 @@ def generate_sympy_data(num_samples=100, max_nodes=50, mode="algebraic", llm_tok
         {"domain": "thermodynamics", "problem": "Q - W", "correct": "dU", "adversarial": "dU + 1", "template": "first_law"},
         {"domain": "quantum_mechanics", "problem": "hbar*omega", "correct": "E", "adversarial": "E + 1", "template": "photon_energy"},
     ]
+
+    formula_corpus = formula_corpus if isinstance(formula_corpus, list) else load_formula_corpus()
 
     for _ in range(num_samples):
         domain = "symbolic_algebra"
@@ -402,6 +423,13 @@ def generate_sympy_data(num_samples=100, max_nodes=50, mode="algebraic", llm_tok
                 expanded = sp.sympify(row["problem"])
                 factored = sp.sympify(row["correct"])
                 adversarial = sp.sympify(row["adversarial"])
+            elif mode == "formula_corpus" and formula_corpus:
+                row = random.choice(formula_corpus)
+                domain = row.get("domain", "formula_corpus")
+                template_name = row.get("name", "formula_item")
+                expanded = formula_to_sympy_safe(row.get("problem", "x"))
+                factored = formula_to_sympy_safe(row.get("solution", "x"))
+                adversarial = factored + 1
             else:
                 a = random.randint(-5, 5)
                 b = random.randint(-5, 5)
@@ -932,9 +960,18 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_prof
     arith_dataset, llm_tokenizer, ast_tokenizer, _ = generate_sympy_data(arith_samples, max_nodes=MAX_NODES, mode="arithmetic", llm_tokenizer=llm_tokenizer, ast_tokenizer=ast_tokenizer)
     
     print(f"Generating {algeb_samples:,} Algebraic Identities Dataset... (SymPy executing on CPU)")
-    algeb_dataset, llm_tokenizer, ast_tokenizer, raw_json_data = generate_sympy_data(algeb_samples, max_nodes=MAX_NODES, mode="algebraic", llm_tokenizer=llm_tokenizer, ast_tokenizer=ast_tokenizer)
+    corpus = load_formula_corpus()
+    algeb_dataset, llm_tokenizer, ast_tokenizer, raw_json_data = generate_sympy_data(
+        algeb_samples, max_nodes=MAX_NODES, mode="algebraic", llm_tokenizer=llm_tokenizer, ast_tokenizer=ast_tokenizer,
+        formula_corpus=corpus
+    )
     physics_dataset, llm_tokenizer, ast_tokenizer, _ = generate_sympy_data(max(200, algeb_samples // 10), max_nodes=MAX_NODES, mode="physics", llm_tokenizer=llm_tokenizer, ast_tokenizer=ast_tokenizer)
+    corpus_dataset, llm_tokenizer, ast_tokenizer, _ = generate_sympy_data(
+        max(200, algeb_samples // 8), max_nodes=MAX_NODES, mode="formula_corpus", llm_tokenizer=llm_tokenizer,
+        ast_tokenizer=ast_tokenizer, formula_corpus=corpus
+    )
     algeb_dataset.extend(physics_dataset)
+    algeb_dataset.extend(corpus_dataset)
     
     json_path = "algebraic_identities.json"
     with open(json_path, "w") as f:
