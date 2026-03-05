@@ -78,6 +78,14 @@ For a full runtime diagram with dataflow and integration boundaries, see:
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
+### Local Training Deployment Architecture
+
+For a codified local deployment stack (trainer + API + orchestrator), see:
+
+- [`docs/LOCAL_TRAINING_DEPLOYMENT.md`](docs/LOCAL_TRAINING_DEPLOYMENT.md)
+- `docker-compose.local-training.yml`
+- `requirements.txt`
+
 ### 1. Training the Model (Database & Serialization Pipeline)
 Before you can interact with the Mathematical CLI, you must populate the weights and database logic using the training flag. 
 
