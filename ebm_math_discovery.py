@@ -126,9 +126,10 @@ def sample_langevin(model, x_nodes, x_adj, y_logits_init, y_adj, steps=20, step_
     
     for step in range(steps):
         optimizer.zero_grad()
+        annealed_temp = max(0.3, temp * (0.98 ** step))
         
         # Gumbel-Softmax discrete-to-continuous bridge using the proposed logits
-        y_soft = F.gumbel_softmax(y_logits, tau=temp, hard=False)
+        y_soft = F.gumbel_softmax(y_logits, tau=annealed_temp, hard=False)
         
         # Energy Forward Pass
         energy = model(x_nodes, x_adj, y_soft, y_adj)
@@ -136,13 +137,17 @@ def sample_langevin(model, x_nodes, x_adj, y_logits_init, y_adj, steps=20, step_
         # We want to MINIMIZE energy, hence no negative sign needed for gradient backward
         loss = energy.sum()
         loss.backward()
+
+        with torch.no_grad():
+            grad_norm = y_logits.grad.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+            y_logits.grad.div_(grad_norm)
         
         # Apply standard gradient step: theta = theta - step_size * grad
         optimizer.step()
         
         # Inject standard Langevin noise term
         with torch.no_grad():
-            noise = torch.randn_like(y_logits) * torch.sqrt(torch.tensor(step_size))
+            noise = torch.randn_like(y_logits) * (step_size ** 0.5)
             y_logits.add_(noise)
             
     return y_logits.detach()
@@ -335,8 +340,13 @@ def generate_sympy_data(num_samples=100, max_nodes=50, mode="algebraic", llm_tok
         raw_json_data.append({
             "problem": str(expanded),
             "correct": str(factored),
-            "adversarial": str(adversarial)
+            "adversarial": str(adversarial),
+            "difficulty": float(sp.count_ops(expanded) + 1),
+            "symbolic_margin": float(abs(sp.count_ops(factored) - sp.count_ops(adversarial)) + 1)
         })
+
+        difficulty = float(sp.count_ops(expanded) + 1)
+        symbolic_margin = float(abs(sp.count_ops(factored) - sp.count_ops(adversarial)) + 1)
         
         dataset.append({
             "problem_expr": expanded,
@@ -347,7 +357,9 @@ def generate_sympy_data(num_samples=100, max_nodes=50, mode="algebraic", llm_tok
             "correct_nodes": correct_nodes,
             "correct_adj": correct_adj,
             "adversarial_nodes": advers_nodes,
-            "adversarial_adj": advers_adj
+            "adversarial_adj": advers_adj,
+            "difficulty": difficulty,
+            "symbolic_margin": symbolic_margin
         })
     
     return dataset, llm_tokenizer, ast_tokenizer, raw_json_data
@@ -539,7 +551,24 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False):
                 pos_energy = model(x_nodes, x_adj, y_pos_soft, y_pos_adj)
                 neg_energy = model(x_nodes, x_adj, y_neg_soft, y_neg_adj)
                 
-                loss = (pos_energy - neg_energy).mean() + 0.1 * (pos_energy**2 + neg_energy**2).mean()
+                sample_difficulty = torch.tensor(
+                    [item.get("difficulty", 1.0) for item in batch],
+                    device=device,
+                    dtype=pos_energy.dtype
+                )
+                sample_margin = torch.tensor(
+                    [item.get("symbolic_margin", 1.0) for item in batch],
+                    device=device,
+                    dtype=pos_energy.dtype
+                )
+
+                # Margin grows with symbolic structural gap, making harder contrasts contribute more.
+                adaptive_margin = 0.2 + 0.05 * torch.log1p(sample_margin)
+                contrastive = F.relu(adaptive_margin + pos_energy - neg_energy)
+                weighted_contrastive = (contrastive * torch.log1p(sample_difficulty)).mean()
+
+                energy_reg = 0.05 * (pos_energy.pow(2) + neg_energy.pow(2)).mean()
+                loss = weighted_contrastive + energy_reg
                 
                 loss = loss / GRAD_ACCUM_STEPS
                 loss.backward()
