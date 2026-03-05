@@ -106,6 +106,9 @@ class OpenClawBridge:
         - set_conjecture: expects conjecture and optional generated_code
         - set_status: expects validation_status
         - state_patch: expects patch dictionary merged into state root
+        - run_ablation: sets ablation request payload
+        - request_counterexample: requests adversarial proof test
+        - promote_candidate / demote_candidate: updates declaration state
         """
         cmd_type = command.get("type")
         if cmd_type == "set_conjecture":
@@ -122,6 +125,22 @@ class OpenClawBridge:
 
         if cmd_type == "state_patch" and isinstance(command.get("patch"), dict):
             state_manager.update_state(command["patch"])
+            return True
+
+        if cmd_type == "run_ablation":
+            state_manager.update_state({"ablation_request": command.get("payload", {})})
+            return True
+
+        if cmd_type == "request_counterexample":
+            state_manager.update_state({"counterexample_request": command.get("payload", {})})
+            return True
+
+        if cmd_type == "promote_candidate":
+            state_manager.update_state({"law_declared": True, "promotion_note": command.get("note", "manual_promotion")})
+            return True
+
+        if cmd_type == "demote_candidate":
+            state_manager.update_state({"law_declared": False, "promotion_note": command.get("note", "manual_demotion")})
             return True
 
         return False

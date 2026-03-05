@@ -18,6 +18,8 @@ class SciOracleStateManager:
             "generated_code": None,
             "validation_status": "pending",
             "validation_errors": [],
+            "proof_status": "unverified",
+            "counterexample_trace": None,
             "ebm_energy": None,
             "latest_discovery": None,
             "law_declared": False,

@@ -3,10 +3,12 @@ import time
 import os
 import sys
 import yaml
+import random
 from state_manager import SciOracleStateManager
 from skills.symbolic_log import execute as symbolic_execute
 from skills.ebm_solve import execute as ebm_execute
 from openclaw_interface import OpenClawBridge
+from ebm_math_discovery import init_db, retrieve_analogical_conjectures
 
 def load_config():
     with open("config.yaml", "r") as f:
@@ -23,6 +25,23 @@ def run_oracle_coder(state_manager: SciOracleStateManager, bridge: OpenClawBridg
     """
     print("[Oracle_Coder] Initialized on System RAM threads.")
     sleep_s = agent_loop_delay(config, "oracle", 1.0)
+    db = init_db("math_knowledge.db")
+
+    def propose_conjecture(state):
+        domain = state.get("target_physics_domain")
+        analogs = retrieve_analogical_conjectures(db, physics_domain=domain, limit=3)
+        seeds = [
+            "x**2 + 2*x + 1 = (x + 1)**2",
+            "x**2 - 1 = (x - 1)*(x + 1)",
+            "m*a = F",
+            "V/R = I",
+        ]
+        if analogs:
+            pick = random.choice(analogs)
+            mutated = f"{pick['problem_math']} = {pick['solution_math']}"
+            return mutated, pick.get("signature")
+        return random.choice(seeds), None
+
     while True:
         state = state_manager.read_state()
         status = state.get("validation_status")
@@ -31,8 +50,10 @@ def run_oracle_coder(state_manager: SciOracleStateManager, bridge: OpenClawBridg
             # Initial generation
             print("[Oracle_Coder] Generating initial mathematical conjecture...")
             time.sleep(2) # Simulate LLM inference
+            conjecture, seed_signature = propose_conjecture(state)
             state_manager.update_state({
-                "current_conjecture": "x**2 + 2*x + 1 = (x + 1)**2",
+                "current_conjecture": conjecture,
+                "seed_signature": seed_signature,
                 "generated_code": "def example(): return True",
                 "validation_status": "validating",
                 "iteration_count": state.get("iteration_count", 0) + 1
@@ -44,9 +65,10 @@ def run_oracle_coder(state_manager: SciOracleStateManager, bridge: OpenClawBridg
             errors = state.get("validation_errors", [])
             print(f"[Oracle_Coder] Self-Correcting based on error logs: {errors[-1]}")
             time.sleep(2) # Simulate LLM correcting code
-            # Assume it corrects the equation in the next step
+            conjecture, seed_signature = propose_conjecture(state)
             state_manager.update_state({
-                "current_conjecture": "x**2 - 1 = (x - 1)*(x + 1)",
+                "current_conjecture": conjecture,
+                "seed_signature": seed_signature,
                 "generated_code": "def corrected(): return True",
                 "validation_status": "validating",
                 "validation_errors": [], # clear active errors for the retry

@@ -14,6 +14,8 @@ An AI architecture designed for symbolic mathematical discovery using Graph Neur
 - **Physics Attribution Layer** tags conjectures with likely applied-physics domains (e.g., EM, QM, Thermodynamics).
 - **Discovery Declaration Pipeline** promotes low-energy, symbolically-sound conjectures to theorem/law candidates with notification logging.
 - **Hardware-Scaled Runtime Profiles** support `low`, `medium`, `high` compute modes for portability across laptops, desktops, and GPU servers.
+- **Formal Proof Layer (SymPy→Z3 subset)** validates supported symbolic conjectures with counterexample trace certificates.
+- **Calibration + Uncertainty** converts raw energy into confidence and abstains as `unknown` in low-confidence bands.
 
 ---
 
@@ -172,6 +174,10 @@ SciOracle now supports research-oriented databasing and discovery declarations:
 3. Query research timeline and domain distribution from API:
    ```bash
    GET /api/research/graph
+   ```
+4. Query derivation lineage graph:
+   ```bash
+   GET /api/research/lineage
    ```
 
 ### Scalable Compute Configuration (Any Computer)

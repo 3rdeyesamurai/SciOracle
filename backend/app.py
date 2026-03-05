@@ -195,10 +195,56 @@ def research_graph_summary(limit: int = 200):
     for point in timeline:
         domain_counts[point["physics_domain"]] = domain_counts.get(point["physics_domain"], 0) + 1
 
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT src_label, dst_label
+        FROM conjecture_graph_edges
+        ORDER BY id DESC
+        LIMIT ?
+    ''', (int(limit) * 4,))
+    edges = cursor.fetchall()
+    conn.close()
+    degree = {}
+    for src, dst in edges:
+        degree[src] = degree.get(src, 0) + 1
+        degree[dst] = degree.get(dst, 0) + 1
+    top_nodes = sorted(degree.items(), key=lambda x: x[1], reverse=True)[:10]
+
     return {
         "points": timeline,
         "domain_counts": domain_counts,
+        "graph_centrality": [{"node": n, "degree": d} for n, d in top_nodes],
+        "communities": [{"label": dom, "size": c} for dom, c in domain_counts.items()],
         "size": len(timeline),
+    }
+
+@app.get("/api/research/lineage")
+def research_lineage(limit: int = 200):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        '''
+        SELECT parent_signature, child_signature, relation_type, created_at
+        FROM conjecture_lineage
+        ORDER BY id DESC
+        LIMIT ?
+        ''',
+        (int(limit),),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return {
+        "edges": [
+            {
+                "parent_signature": r[0],
+                "child_signature": r[1],
+                "relation_type": r[2],
+                "created_at": r[3],
+            }
+            for r in rows
+        ],
+        "size": len(rows),
     }
 
 @app.post("/api/analyze")

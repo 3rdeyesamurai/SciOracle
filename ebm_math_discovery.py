@@ -10,6 +10,7 @@ import json
 import argparse
 import hashlib
 from datetime import datetime
+from collections import Counter
 from torch.utils.checkpoint import checkpoint
 from transformers import AutoTokenizer
 
@@ -166,7 +167,7 @@ class MathEBM(nn.Module):
 
 # Task 2: MCMC Langevin Sampling Loop for Graph node optimization
 
-def sample_langevin(model, x_nodes, x_adj, y_logits_init, y_adj, steps=20, step_size=0.1, temp=1.0):
+def sample_langevin(model, x_nodes, x_adj, y_logits_init, y_adj, steps=20, step_size=0.1, temp=1.0, return_trace=False, top_k=5):
     """
     Performs gradient-based Langevin Dynamics to optimize the continuous
     representation (y_logits) by minimizing the predicted energy E(x, y).
@@ -182,6 +183,7 @@ def sample_langevin(model, x_nodes, x_adj, y_logits_init, y_adj, steps=20, step_
     # Freeze model weights during generation
     model.eval() 
     
+    trace = []
     for step in range(steps):
         optimizer.zero_grad()
         annealed_temp = max(0.3, temp * (0.98 ** step))
@@ -191,6 +193,12 @@ def sample_langevin(model, x_nodes, x_adj, y_logits_init, y_adj, steps=20, step_
         
         # Energy Forward Pass
         energy = model(x_nodes, x_adj, y_soft, y_adj)
+        if return_trace:
+            trace.append({
+                "step": step,
+                "mean_energy": float(energy.mean().detach().cpu().item()),
+                "temperature": float(annealed_temp),
+            })
         
         # We want to MINIMIZE energy, hence no negative sign needed for gradient backward
         loss = energy.sum()
@@ -208,6 +216,9 @@ def sample_langevin(model, x_nodes, x_adj, y_logits_init, y_adj, steps=20, step_
             noise = torch.randn_like(y_logits) * (step_size ** 0.5)
             y_logits.add_(noise)
             
+    if return_trace:
+        ranked = sorted(trace, key=lambda t: t["mean_energy"])[:max(1, top_k)]
+        return y_logits.detach(), ranked
     return y_logits.detach()
 
 
@@ -356,7 +367,16 @@ def generate_sympy_data(num_samples=100, max_nodes=50, mode="algebraic", llm_tok
     dataset = []
     raw_json_data = []
     
+    physics_templates = [
+        {"domain": "classical_mechanics", "problem": "m*a", "correct": "F", "adversarial": "F + 1", "template": "newton_second_law"},
+        {"domain": "electromagnetism", "problem": "V/R", "correct": "I", "adversarial": "I + 1", "template": "ohms_law"},
+        {"domain": "thermodynamics", "problem": "Q - W", "correct": "dU", "adversarial": "dU + 1", "template": "first_law"},
+        {"domain": "quantum_mechanics", "problem": "hbar*omega", "correct": "E", "adversarial": "E + 1", "template": "photon_energy"},
+    ]
+
     for _ in range(num_samples):
+        domain = "symbolic_algebra"
+        template_name = "synthetic"
         if mode == "arithmetic":
             a = random.randint(1, 10)
             b = random.randint(1, 10)
@@ -373,19 +393,29 @@ def generate_sympy_data(num_samples=100, max_nodes=50, mode="algebraic", llm_tok
                 factored = sp.sympify(a - b)
                 
             adversarial = factored + random.randint(1, 5)
+            template_name = f"arithmetic_{op_choice}"
         else:
-            a = random.randint(-5, 5)
-            b = random.randint(-5, 5)
-            factored = (x + a) * (x + b)
-            expanded = sp.expand(factored)
-            
-            mutation_type = random.choice([1, 2, 3])
-            if mutation_type == 1:
-                adversarial = (x - a) * (x + b) # Wrong sign
-            elif mutation_type == 2:
-                adversarial = (x + a + 1) * (x + b) # Wrong constant
+            if mode == "physics":
+                row = random.choice(physics_templates)
+                domain = row["domain"]
+                template_name = row["template"]
+                expanded = sp.sympify(row["problem"])
+                factored = sp.sympify(row["correct"])
+                adversarial = sp.sympify(row["adversarial"])
             else:
-                adversarial = (x + b) * (x + b) # Duplicate term
+                a = random.randint(-5, 5)
+                b = random.randint(-5, 5)
+                factored = (x + a) * (x + b)
+                expanded = sp.expand(factored)
+
+                mutation_type = random.choice([1, 2, 3])
+                template_name = f"algebraic_mutation_{mutation_type}"
+                if mutation_type == 1:
+                    adversarial = (x - a) * (x + b) # Wrong sign
+                elif mutation_type == 2:
+                    adversarial = (x + a + 1) * (x + b) # Wrong constant
+                else:
+                    adversarial = (x + b) * (x + b) # Duplicate term
 
         # Problem is Natural Language sequence encoded by LLM tokenizer
         p_nl = sympy_to_nl_str(expanded)
@@ -400,7 +430,9 @@ def generate_sympy_data(num_samples=100, max_nodes=50, mode="algebraic", llm_tok
             "correct": str(factored),
             "adversarial": str(adversarial),
             "difficulty": float(sp.count_ops(expanded) + 1),
-            "symbolic_margin": float(abs(sp.count_ops(factored) - sp.count_ops(adversarial)) + 1)
+            "symbolic_margin": float(abs(sp.count_ops(factored) - sp.count_ops(adversarial)) + 1),
+            "domain": domain,
+            "template": template_name,
         })
 
         difficulty = float(sp.count_ops(expanded) + 1)
@@ -417,7 +449,9 @@ def generate_sympy_data(num_samples=100, max_nodes=50, mode="algebraic", llm_tok
             "adversarial_nodes": advers_nodes,
             "adversarial_adj": advers_adj,
             "difficulty": difficulty,
-            "symbolic_margin": symbolic_margin
+            "symbolic_margin": symbolic_margin,
+            "domain": domain,
+            "template": template_name,
         })
     
     return dataset, llm_tokenizer, ast_tokenizer, raw_json_data
@@ -481,16 +515,122 @@ def record_discovery_notification(notification_path, payload):
     with open(notification_path, "a") as f:
         f.write(json.dumps(payload) + "\n")
 
-def declare_theorem_if_sound(conn, p_nl, p_math, s_nl, s_math, energy, is_sound, threshold=0.05):
-    """Declare theorem/new law candidates for symbolically sound, low-energy discoveries."""
+def retrieve_analogical_conjectures(conn, physics_domain=None, limit=5):
+    cursor = conn.cursor()
+    if physics_domain:
+        cursor.execute(
+            '''
+            SELECT problem_math, solution_math, conjecture_signature, energy
+            FROM math_discoveries
+            WHERE physics_domain = ?
+            ORDER BY energy ASC, id DESC
+            LIMIT ?
+            ''',
+            (physics_domain, int(limit)),
+        )
+    else:
+        cursor.execute(
+            '''
+            SELECT problem_math, solution_math, conjecture_signature, energy
+            FROM math_discoveries
+            ORDER BY energy ASC, id DESC
+            LIMIT ?
+            ''',
+            (int(limit),),
+        )
+    return [
+        {
+            "problem_math": row[0],
+            "solution_math": row[1],
+            "signature": row[2],
+            "energy": row[3],
+        }
+        for row in cursor.fetchall()
+    ]
+
+def fit_energy_calibration(conn):
+    """Fit a lightweight Platt-style calibration using stored outcomes."""
+    cursor = conn.cursor()
+    cursor.execute("SELECT energy, is_sound FROM math_discoveries WHERE energy IS NOT NULL ORDER BY id DESC LIMIT 5000")
+    rows = cursor.fetchall()
+    if len(rows) < 8:
+        return {"slope": -8.0, "bias": 2.0, "method": "default"}
+
+    energies = [float(r[0]) for r in rows]
+    labels = [1.0 if r[1] else 0.0 for r in rows]
+    mean_e = sum(energies) / len(energies)
+    mean_y = sum(labels) / len(labels)
+    var_e = sum((e - mean_e) ** 2 for e in energies) / len(energies)
+    cov = sum((energies[i] - mean_e) * (labels[i] - mean_y) for i in range(len(energies))) / len(energies)
+    slope = (cov / (var_e + 1e-8)) if var_e > 0 else -8.0
+    slope = -abs(slope) if slope != 0 else -8.0
+    bias = mean_y - slope * mean_e
+    return {"slope": float(slope), "bias": float(bias), "method": "platt_linearized"}
+
+def energy_to_confidence(energy, calibration):
+    slope = float(calibration.get("slope", -8.0))
+    bias = float(calibration.get("bias", 2.0))
+    score = slope * float(energy) + bias
+    return float(1.0 / (1.0 + (2.718281828 ** (-score))))
+
+def evaluate_counterfactual_stability(problem_math, solution_math):
+    """Generate tiny perturbations and estimate robustness of equality."""
+    stable = 0
+    total = 0
+    perturbations = []
+    try:
+        base_expr = sp.sympify(problem_math)
+        sol_expr = sp.sympify(solution_math)
+        x = sp.Symbol('x')
+        candidates = [base_expr + 1, base_expr - 1, base_expr + x, base_expr - x]
+        for cand in candidates:
+            total += 1
+            ok = sp.simplify(cand - sol_expr) == 0
+            if ok:
+                stable += 1
+            perturbations.append({"candidate": str(cand), "matches": bool(ok)})
+    except Exception:
+        return {"repeatability": 0.0, "class": "unknown", "perturbations": []}
+
+    repeatability = stable / max(total, 1)
+    cls = "robust" if repeatability >= 0.5 else "fragile"
+    return {"repeatability": repeatability, "class": cls, "perturbations": perturbations}
+
+def ast_reason_vector(expr):
+    """Simple reason-vector from symbolic motifs for interpretability."""
+    try:
+        e = sp.sympify(expr)
+    except Exception:
+        return {}
+    motifs = Counter()
+    for node in sp.preorder_traversal(e):
+        motifs[type(node).__name__] += 1
+    total = sum(motifs.values()) or 1
+    return {k: v / total for k, v in motifs.items()}
+
+def declare_theorem_if_sound(conn, p_nl, p_math, s_nl, s_math, energy, is_sound, threshold=0.05, proof_status=None):
+    """Declare theorem/new law candidates with calibration + repeatability guards."""
     if not is_sound:
         return None
 
     energy_value = float(energy) if energy is not None else 0.0
-    theorem_status = "theorem_verified" if energy_value <= threshold else "symbolically_verified"
+    calibration = fit_energy_calibration(conn)
+    confidence = energy_to_confidence(energy_value, calibration)
+    stability = evaluate_counterfactual_stability(p_math, s_math)
+    reproducible = stability["repeatability"] >= 0.5
+    proof_ok = proof_status in (None, "sympy_and_z3_verified")
+
+    if 0.45 <= confidence <= 0.6:
+        theorem_status = "unknown"
+    elif energy_value <= threshold and confidence >= 0.6 and reproducible and proof_ok:
+        theorem_status = "theorem_verified"
+    else:
+        theorem_status = "symbolically_verified"
+
     law_declaration = theorem_status == "theorem_verified"
     physics_domain, attribution = infer_physics_application(p_nl, p_math, s_math)
     signature = conjecture_signature(p_math, s_math)
+    reason_vector = ast_reason_vector(s_math)
 
     cursor = conn.cursor()
     cursor.execute(
@@ -507,6 +647,8 @@ def declare_theorem_if_sound(conn, p_nl, p_math, s_nl, s_math, energy, is_sound,
             "attribution": attribution,
             "signature": signature,
             "notification": "already_sent",
+            "confidence": confidence,
+            "repeatability": stability["repeatability"],
         }
 
     message = {
@@ -521,6 +663,10 @@ def declare_theorem_if_sound(conn, p_nl, p_math, s_nl, s_math, energy, is_sound,
         "attribution": attribution,
         "conjecture_signature": signature,
         "notification": "NEW_DISCOVERY",
+        "confidence": confidence,
+        "repeatability": stability["repeatability"],
+        "stability_class": stability["class"],
+        "reason_vector": reason_vector,
     }
 
     if row:
@@ -532,10 +678,16 @@ def declare_theorem_if_sound(conn, p_nl, p_math, s_nl, s_math, energy, is_sound,
                 physics_domain = ?,
                 attribution = ?,
                 conjecture_signature = ?,
-                notification_sent = 1
+                notification_sent = 1,
+                confidence = ?,
+                repeatability = ?,
+                proof_status = ?
             WHERE id = ?
             ''',
-            (theorem_status, bool(law_declaration), physics_domain, attribution, signature, row[0]),
+            (
+                theorem_status, bool(law_declaration), physics_domain, attribution, signature,
+                confidence, stability["repeatability"], proof_status or "unknown", row[0]
+            ),
         )
     else:
         cursor.execute(
@@ -543,15 +695,29 @@ def declare_theorem_if_sound(conn, p_nl, p_math, s_nl, s_math, energy, is_sound,
             INSERT INTO math_discoveries (
                 problem_nl, problem_math, solution_nl, solution_math, energy, is_sound,
                 theorem_status, law_declaration, physics_domain, attribution,
-                conjecture_signature, notification_sent
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                conjecture_signature, notification_sent, confidence, repeatability, proof_status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''',
             (
                 str(p_nl), str(p_math), str(s_nl), str(s_math), energy_value, bool(is_sound),
                 theorem_status, bool(law_declaration), physics_domain, attribution,
-                signature, True,
+                signature, True, confidence, stability["repeatability"], proof_status or "unknown",
             ),
         )
+
+    try:
+        store_conjecture_graph(conn, signature, s_math)
+        store_proof_attempt(
+            conn,
+            signature,
+            theorem_status,
+            confidence,
+            proof_status or "unknown",
+            stability,
+            None,
+        )
+    except Exception:
+        pass
 
     conn.commit()
     record_discovery_notification("discoveries/discovery_notifications.jsonl", message)
@@ -576,7 +742,68 @@ def init_db(db_path="math_knowledge.db"):
             attribution TEXT,
             conjecture_signature TEXT,
             notification_sent BOOLEAN DEFAULT 0,
-            image_path TEXT
+            image_path TEXT,
+            confidence REAL DEFAULT 0.0,
+            repeatability REAL DEFAULT 0.0,
+            proof_status TEXT DEFAULT 'unverified'
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS conjecture_graph_nodes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conjecture_signature TEXT,
+            node_label TEXT,
+            node_type TEXT,
+            node_weight REAL DEFAULT 1.0
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS conjecture_graph_edges (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conjecture_signature TEXT,
+            src_label TEXT,
+            dst_label TEXT,
+            edge_type TEXT
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS proof_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conjecture_signature TEXT,
+            theorem_status TEXT,
+            confidence REAL,
+            proof_status TEXT,
+            repeatability REAL,
+            stability_class TEXT,
+            counterexample_trace TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS counterexamples (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conjecture_signature TEXT,
+            counterexample_json TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS citations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conjecture_signature TEXT,
+            citation_title TEXT,
+            citation_url TEXT,
+            citation_notes TEXT
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS conjecture_lineage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            parent_signature TEXT,
+            child_signature TEXT,
+            relation_type TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
 
@@ -588,6 +815,9 @@ def init_db(db_path="math_knowledge.db"):
         "conjecture_signature": "TEXT",
         "notification_sent": "BOOLEAN DEFAULT 0",
         "image_path": "TEXT",
+        "confidence": "REAL DEFAULT 0.0",
+        "repeatability": "REAL DEFAULT 0.0",
+        "proof_status": "TEXT DEFAULT 'unverified'",
     }
     cursor.execute("PRAGMA table_info(math_discoveries)")
     existing_cols = {row[1] for row in cursor.fetchall()}
@@ -598,7 +828,50 @@ def init_db(db_path="math_knowledge.db"):
     conn.commit()
     return conn
 
-def log_to_db(conn, p_nl, p_math, s_nl, s_math, energy, is_sound, image_path=None):
+def store_conjecture_graph(conn, signature, expr):
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM conjecture_graph_nodes WHERE conjecture_signature = ?", (signature,))
+    cursor.execute("DELETE FROM conjecture_graph_edges WHERE conjecture_signature = ?", (signature,))
+    parsed = sp.sympify(expr)
+    nodes = []
+    edges = []
+    def traverse(node, parent_label=None):
+        label = str(node)
+        nodes.append((signature, label, type(node).__name__, 1.0))
+        if parent_label is not None:
+            edges.append((signature, parent_label, label, "ast_child"))
+        for arg in getattr(node, "args", []):
+            traverse(arg, label)
+    traverse(parsed)
+    cursor.executemany(
+        "INSERT INTO conjecture_graph_nodes (conjecture_signature, node_label, node_type, node_weight) VALUES (?, ?, ?, ?)",
+        nodes,
+    )
+    cursor.executemany(
+        "INSERT INTO conjecture_graph_edges (conjecture_signature, src_label, dst_label, edge_type) VALUES (?, ?, ?, ?)",
+        edges,
+    )
+
+def store_proof_attempt(conn, signature, theorem_status, confidence, proof_status, stability, counterexample_trace):
+    cursor = conn.cursor()
+    cursor.execute(
+        '''
+        INSERT INTO proof_attempts
+        (conjecture_signature, theorem_status, confidence, proof_status, repeatability, stability_class, counterexample_trace)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''',
+        (
+            signature,
+            theorem_status,
+            float(confidence),
+            proof_status,
+            float(stability.get("repeatability", 0.0)),
+            stability.get("class", "unknown"),
+            json.dumps(counterexample_trace) if counterexample_trace is not None else None,
+        ),
+    )
+
+def log_to_db(conn, p_nl, p_math, s_nl, s_math, energy, is_sound, image_path=None, proof_status="unverified"):
     cursor = conn.cursor()
     domain, attribution = infer_physics_application(p_nl, p_math, s_math)
     signature = conjecture_signature(p_math, s_math)
@@ -606,12 +879,12 @@ def log_to_db(conn, p_nl, p_math, s_nl, s_math, energy, is_sound, image_path=Non
         INSERT INTO math_discoveries 
         (problem_nl, problem_math, solution_nl, solution_math, energy, is_sound,
          theorem_status, law_declaration, physics_domain, attribution,
-         conjecture_signature, notification_sent, image_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         conjecture_signature, notification_sent, image_path, proof_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         str(p_nl), str(p_math), str(s_nl), str(s_math), float(energy) if energy is not None else 0.0, bool(is_sound),
         "unverified", False, domain, attribution,
-        signature, False, image_path
+        signature, False, image_path, proof_status
     ))
     conn.commit()
 
@@ -660,6 +933,8 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_prof
     
     print(f"Generating {algeb_samples:,} Algebraic Identities Dataset... (SymPy executing on CPU)")
     algeb_dataset, llm_tokenizer, ast_tokenizer, raw_json_data = generate_sympy_data(algeb_samples, max_nodes=MAX_NODES, mode="algebraic", llm_tokenizer=llm_tokenizer, ast_tokenizer=ast_tokenizer)
+    physics_dataset, llm_tokenizer, ast_tokenizer, _ = generate_sympy_data(max(200, algeb_samples // 10), max_nodes=MAX_NODES, mode="physics", llm_tokenizer=llm_tokenizer, ast_tokenizer=ast_tokenizer)
+    algeb_dataset.extend(physics_dataset)
     
     json_path = "algebraic_identities.json"
     with open(json_path, "w") as f:
@@ -681,6 +956,7 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_prof
     d_model = int(runtime.get("d_model", 256))
     num_layers = int(runtime.get("num_layers", 4))
     langevin_steps = int(runtime.get("langevin_steps", 15))
+    capture_near_miss = bool(runtime.get("capture_near_miss", True))
     arith_epochs = int(runtime.get("arith_epochs", 500))
     algeb_epochs = int(runtime.get("algeb_epochs", 10))
     
@@ -699,6 +975,8 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_prof
     
     # Self-Improvement Buffer (Experience Replay for network's own dynamic mathematical discoveries)
     self_improvement_buffer = []
+    domain_failure = Counter()
+    template_failure = Counter()
 
     def run_training_loop(dataset, epochs, phase_name):
         print(f"--- Starting {phase_name} ({epochs} Epochs) ---")
@@ -729,8 +1007,18 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_prof
                 y_neg_init = y_neg_init * 5.0 + torch.randn_like(y_neg_init) 
                 
                 # Langevin dynamics generates continuous soft-token landscape updates mathematically
-                y_neg_logits = sample_langevin(model, x_nodes, x_adj, y_neg_init, y_neg_adj, steps=langevin_steps, step_size=0.1, temp=1.0)
+                if capture_near_miss:
+                    y_neg_logits, near_miss = sample_langevin(
+                        model, x_nodes, x_adj, y_neg_init, y_neg_adj,
+                        steps=langevin_steps, step_size=0.1, temp=1.0, return_trace=True
+                    )
+                else:
+                    y_neg_logits = sample_langevin(model, x_nodes, x_adj, y_neg_init, y_neg_adj, steps=langevin_steps, step_size=0.1, temp=1.0)
+                    near_miss = []
                 y_neg_soft = F.gumbel_softmax(y_neg_logits, tau=1.0, hard=False)
+                for item in batch:
+                    domain_failure[item.get("domain", "unknown")] += 1
+                    template_failure[item.get("template", "unknown")] += 1
                 
                 # SELF IMPROVEMENT NEURAL ARCHITECTURE (Algorithmic Verification)
                 # Check if the network accidentally proved a problem logically correct during gradient walking:
@@ -744,6 +1032,11 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_prof
                             # The model has successfully proven/discovered a valid configuration during Langevin
                             if len(self_improvement_buffer) < 500: # Limit size
                                 self_improvement_buffer.append(batch[j])
+
+                    if near_miss and len(self_improvement_buffer) < 500 and len(batch) > 0:
+                        synthetic = dict(batch[0])
+                        synthetic["near_miss_trace"] = near_miss
+                        self_improvement_buffer.append(synthetic)
                 
                 model.train() 
                 
@@ -782,6 +1075,16 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_prof
             avg_loss = total_loss / max(1, (len(active_dataset)//BATCH_SIZE))
             if (epoch + 1) % max(1, epochs // 10) == 0:
                 print(f"[{phase_name}] Epoch {epoch+1}/{epochs} | CD Loss: {avg_loss:.4f} | Replay Buffer (Self-Discovered): {len(self_improvement_buffer)}")
+
+        metrics_payload = {
+            "phase": phase_name,
+            "domain_failure_rates": dict(domain_failure),
+            "template_failure_rates": dict(template_failure),
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+        }
+        os.makedirs("discoveries", exist_ok=True)
+        with open("discoveries/training_domain_metrics.jsonl", "a") as f:
+            f.write(json.dumps(metrics_payload) + "\n")
 
     # Phase 1: arithmetic warm-up
     run_training_loop(arith_dataset, arith_epochs, "Cold Start (Arithmetic)")
