@@ -6,7 +6,7 @@ import pickle
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from state_manager import SciOracleStateManager
-from ebm_math_discovery import evaluate_energy, load_checkpoint
+from ebm_math_discovery import evaluate_energy, load_checkpoint, init_db, log_to_db, declare_theorem_if_sound
 
 def ensure_discovery_dir():
     os.makedirs("discoveries", exist_ok=True)
@@ -67,8 +67,17 @@ def execute():
             
             if isinstance(energy, str):
                 return f"EBM Evaluation returned error string: {energy}"
+
+            db_conn = init_db(os.path.join(base_dir, "math_knowledge.db"))
+            is_sound = True
+            log_to_db(db_conn, p_nl, p_nl, s_math, s_math, energy, is_sound)
+            declaration = declare_theorem_if_sound(db_conn, p_nl, p_nl, s_math, s_math, energy, is_sound)
                 
-            manager.update_state({"ebm_energy": energy})
+            manager.update_state({
+                "ebm_energy": energy,
+                "latest_discovery": declaration,
+                "law_declared": bool(declaration and declaration.get("law_declaration")),
+            })
             
             # Save matrix to binary dump
             with open("discoveries/stability_matrix.bin", "wb") as f:

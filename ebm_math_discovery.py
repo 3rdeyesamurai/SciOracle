@@ -8,6 +8,8 @@ import re
 import sqlite3
 import json
 import argparse
+import hashlib
+from datetime import datetime
 from torch.utils.checkpoint import checkpoint
 from transformers import AutoTokenizer
 
@@ -397,6 +399,108 @@ def load_checkpoint(path, device):
     model.eval()
     return model, llm_tokenizer, ast_tokenizer
 
+def infer_physics_application(problem_nl, problem_math, solution_math):
+    """Heuristic attribution of conjectures to a physics domain."""
+    text = " ".join([str(problem_nl), str(problem_math), str(solution_math)]).lower()
+    rules = [
+        ("electromagnetism", ["charge", "electric", "magnetic", "maxwell", "coulomb", "voltage", "current", "field"]),
+        ("quantum_mechanics", ["hbar", "psi", "schrodinger", "wavefunction", "operator", "eigen", "quantum"]),
+        ("relativity", ["einstein", "lorentz", "spacetime", "gamma", "mass energy"]),
+        ("thermodynamics", ["entropy", "temperature", "heat", "boltzmann", "thermo", "pressure"]),
+        ("fluid_dynamics", ["navier", "stokes", "viscosity", "fluid", "reynolds", "vorticity"]),
+        ("classical_mechanics", ["force", "momentum", "newton", "lagrangian", "hamiltonian", "kinetic", "potential"]),
+        ("waves_optics", ["wavelength", "frequency", "amplitude", "interference", "diffraction", "optics"]),
+    ]
+    for domain, keywords in rules:
+        if any(k in text for k in keywords):
+            return domain, "keyword_heuristic"
+    return "symbolic_algebra", "default_symbolic_inference"
+
+def conjecture_signature(problem_math, solution_math):
+    canonical = f"{str(problem_math).strip()}=>{str(solution_math).strip()}"
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+def record_discovery_notification(notification_path, payload):
+    os.makedirs(os.path.dirname(notification_path) or ".", exist_ok=True)
+    with open(notification_path, "a") as f:
+        f.write(json.dumps(payload) + "\n")
+
+def declare_theorem_if_sound(conn, p_nl, p_math, s_nl, s_math, energy, is_sound, threshold=0.05):
+    """Declare theorem/new law candidates for symbolically sound, low-energy discoveries."""
+    if not is_sound:
+        return None
+
+    energy_value = float(energy) if energy is not None else 0.0
+    theorem_status = "theorem_verified" if energy_value <= threshold else "symbolically_verified"
+    law_declaration = theorem_status == "theorem_verified"
+    physics_domain, attribution = infer_physics_application(p_nl, p_math, s_math)
+    signature = conjecture_signature(p_math, s_math)
+
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, notification_sent FROM math_discoveries WHERE conjecture_signature = ? ORDER BY id DESC LIMIT 1",
+        (signature,),
+    )
+    row = cursor.fetchone()
+
+    if row and row[1]:
+        return {
+            "theorem_status": theorem_status,
+            "law_declaration": bool(law_declaration),
+            "physics_domain": physics_domain,
+            "attribution": attribution,
+            "signature": signature,
+            "notification": "already_sent",
+        }
+
+    message = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "problem_nl": str(p_nl),
+        "problem_math": str(p_math),
+        "solution_math": str(s_math),
+        "energy": energy_value,
+        "theorem_status": theorem_status,
+        "law_declaration": bool(law_declaration),
+        "physics_domain": physics_domain,
+        "attribution": attribution,
+        "conjecture_signature": signature,
+        "notification": "NEW_DISCOVERY",
+    }
+
+    if row:
+        cursor.execute(
+            '''
+            UPDATE math_discoveries
+            SET theorem_status = ?,
+                law_declaration = ?,
+                physics_domain = ?,
+                attribution = ?,
+                conjecture_signature = ?,
+                notification_sent = 1
+            WHERE id = ?
+            ''',
+            (theorem_status, bool(law_declaration), physics_domain, attribution, signature, row[0]),
+        )
+    else:
+        cursor.execute(
+            '''
+            INSERT INTO math_discoveries (
+                problem_nl, problem_math, solution_nl, solution_math, energy, is_sound,
+                theorem_status, law_declaration, physics_domain, attribution,
+                conjecture_signature, notification_sent
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            (
+                str(p_nl), str(p_math), str(s_nl), str(s_math), energy_value, bool(is_sound),
+                theorem_status, bool(law_declaration), physics_domain, attribution,
+                signature, True,
+            ),
+        )
+
+    conn.commit()
+    record_discovery_notification("discoveries/discovery_notifications.jsonl", message)
+    return message
+
 def init_db(db_path="math_knowledge.db"):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -409,19 +513,50 @@ def init_db(db_path="math_knowledge.db"):
             solution_math TEXT,
             energy REAL,
             is_sound BOOLEAN,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            theorem_status TEXT DEFAULT 'unverified',
+            law_declaration BOOLEAN DEFAULT 0,
+            physics_domain TEXT,
+            attribution TEXT,
+            conjecture_signature TEXT,
+            notification_sent BOOLEAN DEFAULT 0,
+            image_path TEXT
         )
     ''')
+
+    required_columns = {
+        "theorem_status": "TEXT DEFAULT 'unverified'",
+        "law_declaration": "BOOLEAN DEFAULT 0",
+        "physics_domain": "TEXT",
+        "attribution": "TEXT",
+        "conjecture_signature": "TEXT",
+        "notification_sent": "BOOLEAN DEFAULT 0",
+        "image_path": "TEXT",
+    }
+    cursor.execute("PRAGMA table_info(math_discoveries)")
+    existing_cols = {row[1] for row in cursor.fetchall()}
+    for col, col_type in required_columns.items():
+        if col not in existing_cols:
+            cursor.execute(f"ALTER TABLE math_discoveries ADD COLUMN {col} {col_type}")
+
     conn.commit()
     return conn
 
-def log_to_db(conn, p_nl, p_math, s_nl, s_math, energy, is_sound):
+def log_to_db(conn, p_nl, p_math, s_nl, s_math, energy, is_sound, image_path=None):
     cursor = conn.cursor()
+    domain, attribution = infer_physics_application(p_nl, p_math, s_math)
+    signature = conjecture_signature(p_math, s_math)
     cursor.execute('''
         INSERT INTO math_discoveries 
-        (problem_nl, problem_math, solution_nl, solution_math, energy, is_sound)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (str(p_nl), str(p_math), str(s_nl), str(s_math), float(energy) if energy is not None else 0.0, bool(is_sound)))
+        (problem_nl, problem_math, solution_nl, solution_math, energy, is_sound,
+         theorem_status, law_declaration, physics_domain, attribution,
+         conjecture_signature, notification_sent, image_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        str(p_nl), str(p_math), str(s_nl), str(s_math), float(energy) if energy is not None else 0.0, bool(is_sound),
+        "unverified", False, domain, attribution,
+        signature, False, image_path
+    ))
     conn.commit()
 
 def nl_to_sympy_str(text):
@@ -669,6 +804,12 @@ def interactive_interface():
                 print("    (Saved to knowledge database)\n")
                 
                 log_to_db(db_conn, p_text, p_math_guess, s_text, s_math, energy, is_sound)
+                declaration = declare_theorem_if_sound(db_conn, p_text, p_math_guess, s_text, s_math, energy, is_sound)
+                if declaration and declaration.get("notification") == "NEW_DISCOVERY":
+                    print(
+                        f"    [Discovery] {declaration['theorem_status']} in {declaration['physics_domain']} "
+                        f"(signature: {declaration['signature'][:12]})"
+                    )
                 
         except KeyboardInterrupt:
             break

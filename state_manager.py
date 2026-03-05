@@ -19,6 +19,8 @@ class SciOracleStateManager:
             "validation_status": "pending",
             "validation_errors": [],
             "ebm_energy": None,
+            "latest_discovery": None,
+            "law_declared": False,
             "discovery_visualized": False,
             "iteration_count": 0,
             "hardware_locks": {

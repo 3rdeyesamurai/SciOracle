@@ -11,6 +11,8 @@ An AI architecture designed for symbolic mathematical discovery using Graph Neur
 - **Arithmetic Cold Start** phase (500 epochs) before algebraic complexity is introduced.
 - **SQLite Database Integration** seamlessly serializes Natural Language to Math representations.
 - **Offline JSON Generation** generates 10,000 algorithmic algebraic identities.
+- **Physics Attribution Layer** tags conjectures with likely applied-physics domains (e.g., EM, QM, Thermodynamics).
+- **Discovery Declaration Pipeline** promotes low-energy, symbolically-sound conjectures to theorem/law candidates with notification logging.
 
 ---
 
@@ -154,6 +156,22 @@ SciOracle now includes a direct bridge module (`openclaw_interface.py`) that can
    - Pushes updated state back whenever Oracle, Validator, or EBM solver changes state
 
 This keeps SciOracle’s local `state.json` protocol intact while enabling direct remote orchestration from OpenDeepClaw.
+
+### Research & Development Graphical Analysis Workflow
+
+SciOracle now supports research-oriented databasing and discovery declarations:
+
+1. Every conjecture evaluation stores:
+   - energy,
+   - symbolic soundness,
+   - physics-domain attribution,
+   - conjecture signature for novelty tracking.
+2. Symbolically sound, low-energy discoveries are declared as theorem/law candidates and written to:
+   - `discoveries/discovery_notifications.jsonl`
+3. Query research timeline and domain distribution from API:
+   ```bash
+   GET /api/research/graph
+   ```
 
 ### 2. Securely Operating with OpenClaw
 

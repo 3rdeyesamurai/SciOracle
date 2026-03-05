@@ -16,7 +16,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from ebm_math_discovery import (
     MathEBM, LLMSeqTokenizer, ASTGraphTokenizer, load_checkpoint,
-    train_ebm, init_db, log_to_db, evaluate_energy, sympy_to_nl_str, nl_to_sympy_str
+    train_ebm, init_db, log_to_db, evaluate_energy, sympy_to_nl_str, nl_to_sympy_str,
+    declare_theorem_if_sound
 )
 import sympy as sp
 
@@ -44,14 +45,7 @@ os.makedirs(FIGURES_DIR, exist_ok=True)
 
 # Database upgrade for figures
 def update_db_schema():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT image_path FROM math_discoveries LIMIT 1")
-    except sqlite3.OperationalError:
-        print("Upgrading database schema to support figures...")
-        cursor.execute("ALTER TABLE math_discoveries ADD COLUMN image_path TEXT")
-        conn.commit()
+    conn = init_db(DB_PATH)
     conn.close()
 
 update_db_schema()
@@ -135,13 +129,53 @@ def evaluate_query(req: QueryRequest):
         return {"error": energy}
         
     log_to_db(db_conn, p_text, p_math_guess, s_text, s_math, energy, is_sound)
+    declaration = declare_theorem_if_sound(db_conn, p_text, p_math_guess, s_text, s_math, energy, is_sound)
     
     return {
         "problem_nl": p_text,
         "problem_math": p_math_guess,
         "solution_math": s_math,
         "energy": energy,
-        "is_sound": is_sound
+        "is_sound": is_sound,
+        "discovery_declaration": declaration
+    }
+
+@app.get("/api/research/graph")
+def research_graph_summary(limit: int = 200):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        '''
+        SELECT id, timestamp, energy, is_sound, theorem_status, physics_domain
+        FROM math_discoveries
+        ORDER BY id DESC
+        LIMIT ?
+        ''',
+        (int(limit),),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    timeline = [
+        {
+            "id": row[0],
+            "timestamp": row[1],
+            "energy": row[2],
+            "is_sound": bool(row[3]),
+            "theorem_status": row[4],
+            "physics_domain": row[5] or "unassigned",
+        }
+        for row in reversed(rows)
+    ]
+
+    domain_counts = {}
+    for point in timeline:
+        domain_counts[point["physics_domain"]] = domain_counts.get(point["physics_domain"], 0) + 1
+
+    return {
+        "points": timeline,
+        "domain_counts": domain_counts,
+        "size": len(timeline),
     }
 
 @app.post("/api/analyze")
