@@ -1,0 +1,119 @@
+\documentclass[11pt,a4paper]{article}
+
+% --- Packages ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\usepackage{hyperref}
+\usepackage{array}
+
+% --- Configuration ---
+\geometry{margin=1in}
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=cyan}
+\definecolor{accentblue}{HTML}{4a90d9}
+\definecolor{accentteal}{HTML}{29b6a8}
+\definecolor{accentgold}{HTML}{c8a84b}
+
+\titleformat{\section}{\large\bfseries\color{accentblue}}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+
+% --- Custom Environments ---
+\newtcolorbox{equationbox}{
+    colback=gray!5,
+    colframe=accentteal,
+    leftrule=4pt,
+    arc=4pt,
+    boxrule=0.5pt,
+    title=Master Energy Function
+}
+
+% --- Document Info ---
+\title{\textbf{SciOracle: The All-Seeing Scientific Digital Mind}}
+\author{Architectural Framework v2.0 \\ Based on Davis (2026)}
+\date{March 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+The SciOracle framework transforms structured formula-finding into a comprehensive Scientific Digital Mind. This architecture integrates multi-modal perception, a four-store knowledge memory, and an expanded nine-head energy network to facilitate autonomous scientific discovery, verification, and interpretability.
+\end{abstract}
+
+\section{System Architecture Overview}
+The system operates as an integrated data flow across eight distinct layers:
+\begin{enumerate}[label=\Roman*.]
+    \item \textbf{Perception \& Ingestion}: Multi-modal handling of raw data, literature, and code.
+    \item \textbf{Knowledge Architecture}: Persistent stores including Knowledge Graphs and Axiom stores.
+    \item \textbf{9-Head Energy Network}: The core engine ($E_{total}$) for hypothesis evaluation.
+    \item \textbf{Hierarchical Search}: Macro Bayesian pruning to micro symbolic manipulation.
+    \item \textbf{Adversarial Proofing}: Multi-agent debate and red-team falsification.
+    \item \textbf{Crystallization Loop}: Iterative observe-hypothesize-verify cycles.
+    \item \textbf{Meta-Learning}: Self-improvement through strategy memory and auto-tuning.
+    \item \textbf{Communication Interface}: Interpretability via proof traces and natural language.
+\end{enumerate}
+
+\section{The Expanded 9-Head Energy Network}
+The fundamental evaluation of any hypothesis is governed by the summation of specific energy penalties across nine dimensions.
+
+\begin{equationbox}
+\begin{aligned}
+E_{total} = \alpha E_{symb} &+ \beta E_{num} + \gamma E_{phys} + \delta E_{causal} + \epsilon E_{MDL} \\
+&+ \zeta E_{consist} + \eta E_{uncert} + \theta E_{novel} + \iota E_{falsif}
+\end{aligned}
+\end{equationbox}
+
+\subsection{Energy Head Definitions}
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Head} & \textbf{Symbol} & \textbf{Weight} & \textbf{Function} \\ \midrule
+Symbolic & $E_{symb}$ & $\alpha$ & Syntactic validity and dimensional consistency. \\
+Numerical & $E_{num}$ & $\beta$ & Statistical fit against experimental data points. \\
+Symmetry & $E_{phys}$ & $\gamma$ & Physical invariances (Noether/Lorentz). \\
+Causal & $E_{causal}$ & $\delta$ & Interventional consistency (Pearl's do-calculus). \\
+Occam & $E_{MDL}$ & $\epsilon$ & Minimum Description Length/Kolmogorov complexity. \\
+Consistency & $E_{consist}$ & $\zeta$ & Cross-domain alignment with Knowledge Graph. \\
+Uncertainty & $E_{uncert}$ & $\eta$ & Quantifies Epistemic vs. Aleatoric uncertainty. \\
+Novelty & $E_{novel}$ & $\theta$ & Distance from existing Episodic Memory. \\
+Falsifiability & $E_{falsif}$ & $\iota$ & Popperian criterion for testable predictions. \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\section{Knowledge \& Memory Stores}
+Intelligence is supported by four interoperating memory architectures:
+\begin{itemize}
+    \item \textbf{Working Memory Buffer}: High-bandwidth state for active energy computation.
+    \item \textbf{Long-Term Knowledge Graph (LTKG)}: Relational nodes of validated scientific entities.
+    \item \textbf{Episodic Memory}: Historical log of past discovery attempts and failure modes.
+    \item \textbf{Symbolic Axiom Store}: Immutable mathematical and physical constants.
+\end{itemize}
+
+\section{Original vs. Perfected Framework}
+\begin{table}[h!]
+\centering
+\footnotesize
+\begin{tabular}{@{}p{2.5cm} p{5.5cm} p{5.5cm}@{}}
+\toprule
+\textbf{Dimension} & \textbf{Original SciOracle} & \textbf{Perfected Architecture} \\ \midrule
+Input Modalities & Numeric \& Symbolic & Multi-modal (Images, Papers, Databases) \\
+Energy Heads & 3 (Symb, Num, Phys) & 9 (Adds Causal, MDL, Novelty, etc.) \\
+Search Strategy & Langevin Dynamics & 3-Scale (Macro, Meso, Micro) \\
+Adversarial & Single Skeptic & 4 Regimes (Red-Team, Multi-Agent) \\
+Weights & Fixed Coefficients & Adaptive Meta-Learning (CMA-ES) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Conclusion}
+The All-Seeing Mind shifts the discovery paradigm from simple curve-fitting to a holistic inquiry: finding laws that are causally valid, physically consistent, and communicable to human collaborators.
+
+\end{document}

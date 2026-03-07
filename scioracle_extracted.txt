@@ -1,0 +1,70 @@
+A Proposed Framework for Advancing
+Energy-Based Models in Scientific Discovery
+Koby Davis
+March 3 2026
+To advance Energy-Based Models (EBMs) to the level of rigor required for
+scientific discovery, we must move beyond simple “guess and check” mechanics
+towardLatent Variable EBMsandStructured Search.
+Here is a proposed framework addressing two fundamental bottlenecks.
+1 Solving the Discrete Space: The “Relax-and-
+Project” Strategy
+Mathematics operates in discrete symbols, yet the laws of physics and nature
+are often continuous. In order to compute effective gradients∇ y, we work in a
+continuous embedding space and project back to symbolic representations.
+Proposed solution: Autoregressive Latent EBM (AL-EBM)
+Instead of assigning energy directly to raw text tokens, we define the energy
+over vector representations lying on a high-dimensional manifold.
+•Continuous Relaxation: Employ a differentiable tokenizer or Gumbel-
+Softmax mechanism, allowing the model to “hover” between discrete sym-
+bols during optimization.
+•Energy-Guided Langevin Dynamics (EGLD): Rather than moving
+in the space of integers, the model evolves in the space of continuous
+features.
+–Example: To solvex2= 4, the model initializes at a random vector
+and follows∇ xE(x, y) until it converges to a point that projects
+cleanly to the token 2.
+2 Solving the Sampling Problem: “Adversarial
+Proofing”
+A model only truly learns where the truth lies when it clearly understands where
+the lies are. Randomly guessing 2 + 2 = 99 is too easy to reject and teaches the
+model little.
+1Proposed solution: Self-Adversarial Negative Mining
+We treat the negative sample generator as a “Skeptic” modelGwhose goal
+is to consistently fool the “Verifier” EBME.
+1.Hard Negative Generation: Use a secondary LLM or mutation-based
+script to produce “near-miss” errors.
+•Correct:d
+dxsin(x) = cos(x)
+•Hard negative:d
+dxsin(x) =−cos(x) (simple sign error — mathe-
+matically close, logically far)
+2.Contrastive Divergence with MCMC: Leverage the current EBM
+state to generate its own negatives. If the EBM assigns low energy to
+2 + 2 = 22, we use that sample as a negative in the next round, forcing
+the energy to be pushed upward.
+3 The Proposed Model: The “Scientific Oracle”
+EBM
+For scientific discovery, evaluation must go beyond token matching to enforce
+consistencyandsymmetry.
+Architecture: Multi-Head Energy Network
+Component Function
+Symbolic Head Checks syntax and algebraic rules (discrete)
+Numerical Head Verifies whether the solution holds forNrandom test points (continuous)
+Symmetry Head Enforces physical invariances (e.g., conservation of energy, momentum, etc.)
+The total energy function is defined as:
+Etotal=α E symb+β E num+γ E phys
+4 Application in Scientific Discovery
+In conventional AI, one asks directly for a formula. In this EBM framework,
+the user providesconstraints(high energy is assigned to violations), and the
+modelcrystallizesa solution.
+•Input: Experimental data points{(x i, yi)}N
+i=1
+•Energy constraints:
+–High energy for overly complex formulas (Occam’s razor)
+2–High energy for deviation from data
+–High energy for violation of known symmetries or conservation laws
+•Discovery process: Perform “cooling” via Simulated Annealing. As
+temperature decreases, random noise diminishes and the model settles
+into the simplest, most accurate mathematical law consistent with all con-
+straints.
+3
