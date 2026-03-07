@@ -11,6 +11,13 @@ An AI architecture designed for symbolic mathematical discovery using Graph Neur
 - **Arithmetic Cold Start** phase (500 epochs) before algebraic complexity is introduced.
 - **SQLite Database Integration** seamlessly serializes Natural Language to Math representations.
 - **Offline JSON Generation** generates 10,000 algorithmic algebraic identities.
+- **Physics Attribution Layer** tags conjectures with likely applied-physics domains (e.g., EM, QM, Thermodynamics).
+- **Discovery Declaration Pipeline** promotes low-energy, symbolically-sound conjectures to theorem/law candidates with notification logging.
+- **Hardware-Scaled Runtime Profiles** support `low`, `medium`, `high` compute modes for portability across laptops, desktops, and GPU servers.
+- **Formal Proof Layer (SymPy→Z3 subset)** validates supported symbolic conjectures with counterexample trace certificates.
+- **Calibration + Uncertainty** converts raw energy into confidence and abstains as `unknown` in low-confidence bands.
+- **Formula Corpus Expansion** augments training with a cross-domain formula library (`formula_corpus.json`) for broader symbolic coverage.
+- **Conversational Context Memory** stores chat context and uses it to infer domains and retrieve analogical conjectures (`POST /api/chat`).
 
 ---
 
@@ -29,6 +36,55 @@ pip install torch sympy transformers
 ---
 
 ## 🚀 How to Run
+
+### Beginner Path Checklist (First Successful Run)
+
+Use this list if you are new to SciOracle and want a safe first success.
+
+1. **Create environment + install deps**
+   - `python 3.10+`
+   - `pip install torch sympy transformers z3-solver pyyaml fastapi uvicorn pymupdf`
+2. **Confirm baseline config**
+   - Open `config.yaml`
+   - Keep `openclaw.enabled: false` for local-only run
+   - Set `scaling.profile: low` for CPU-only machines
+3. **Run import smoke check**
+   - `python -m compileall ebm_math_discovery.py backend/app.py core_agent.py skills/symbolic_log.py skills/ebm_solve.py`
+4. **Initialize with training (small profile)**
+   - `python ebm_math_discovery.py --train --cpu`
+5. **Try interactive CLI**
+   - `python ebm_math_discovery.py`
+   - Example:
+     - Problem: `x squared plus 5x plus 6`
+     - Solution: `(x + 2) times (x + 3)`
+6. **Start API server**
+   - `uvicorn backend.app:app --host 0.0.0.0 --port 8000`
+   - Check `GET /api/status`
+7. **Run one research query**
+   - `POST /api/query`
+   - Then inspect `GET /api/research/graph`
+8. **Enable OpenClaw only after local success**
+   - Set `openclaw.enabled: true`
+   - Fill `base_url`, `agent_id`, and endpoint paths
+9. **Inspect output artifacts**
+   - `math_knowledge.db`
+   - `discoveries/math_log.jsonl`
+   - `discoveries/proof_attempts.jsonl`
+   - `discoveries/discovery_notifications.jsonl`
+
+### Developer Architecture Diagram
+
+For a full runtime diagram with dataflow and integration boundaries, see:
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+
+### Local Training Deployment Architecture
+
+For a codified local deployment stack (trainer + API + orchestrator), see:
+
+- [`docs/LOCAL_TRAINING_DEPLOYMENT.md`](docs/LOCAL_TRAINING_DEPLOYMENT.md)
+- `docker-compose.local-training.yml`
+- `requirements.txt`
 
 ### 1. Training the Model (Database & Serialization Pipeline)
 Before you can interact with the Mathematical CLI, you must populate the weights and database logic using the training flag. 
@@ -134,6 +190,61 @@ Using Docker encapsulates the entire environment, making it easy to deploy acros
    docker run -it --rm --gpus all -v ${PWD}/discoveries:/app/discoveries scioracle-agent
    ```
    *This command runs the container, enables GPU access via `--gpus all`, and mounts the local `discoveries/` folder so generated math logs and visual proofs are securely mirrored to your host machine.*
+
+### OpenClaw Direct Interface (OpenDeepClaw Bridge)
+
+SciOracle now includes a direct bridge module (`openclaw_interface.py`) that can push local agent state and receive remote commands from an OpenClaw/OpenDeepClaw-compatible orchestrator.
+
+1. Update `config.yaml` in the `openclaw` section:
+   - `enabled: true`
+   - `base_url`: URL where OpenDeepClaw API is running
+   - `agent_id`: the SciOracle agent identifier
+   - endpoint paths for state push, command pull, and heartbeat
+2. Start the SciOracle loop:
+   ```bash
+   python core_agent.py
+   ```
+3. SciOracle bridge process behavior:
+   - Sends heartbeat payload every 2 seconds
+   - Pulls command list from OpenClaw and applies supported commands (`set_conjecture`, `set_status`, `state_patch`)
+   - Pushes updated state back whenever Oracle, Validator, or EBM solver changes state
+
+This keeps SciOracle’s local `state.json` protocol intact while enabling direct remote orchestration from OpenDeepClaw.
+
+### Research & Development Graphical Analysis Workflow
+
+SciOracle now supports research-oriented databasing and discovery declarations:
+
+1. Every conjecture evaluation stores:
+   - energy,
+   - symbolic soundness,
+   - physics-domain attribution,
+   - conjecture signature for novelty tracking.
+2. Symbolically sound, low-energy discoveries are declared as theorem/law candidates and written to:
+   - `discoveries/discovery_notifications.jsonl`
+3. Query research timeline and domain distribution from API:
+   ```bash
+   GET /api/research/graph
+   ```
+4. Query derivation lineage graph:
+   ```bash
+   GET /api/research/lineage
+   ```
+5. Use conversational research endpoint:
+   ```bash
+   POST /api/chat
+   ```
+   This updates `state.json` context memory and returns domain inference + analogical candidate formulas.
+
+### Scalable Compute Configuration (Any Computer)
+
+Use the `scaling` block in `config.yaml` to adapt runtime and training footprint to available hardware:
+
+- `profile: low` for CPU-only or low-memory machines.
+- `profile: medium` for consumer GPUs and mixed workloads.
+- `profile: high` for large GPU servers.
+
+The profile automatically controls model width/depth, dataset sizes, epochs, batch sizes, and Langevin steps in `train_ebm(...)`, while agent loop delays and backend retrain intervals are also configurable for throughput tuning.
 
 ### 2. Securely Operating with OpenClaw
 

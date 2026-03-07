@@ -1,0 +1,17 @@
+[
+  {"domain":"algebra","name":"quadratic_formula","problem":"a*x**2 + b*x + c","solution":"(-b + sqrt(b**2 - 4*a*c))/(2*a)"},
+  {"domain":"trigonometry","name":"pythagorean_identity","problem":"sin(x)**2 + cos(x)**2","solution":"1"},
+  {"domain":"calculus","name":"derivative_power_rule","problem":"d/dx x**n","solution":"n*x**(n-1)"},
+  {"domain":"calculus","name":"integral_power_rule","problem":"integral x**n dx","solution":"x**(n+1)/(n+1)"},
+  {"domain":"complex","name":"euler_formula","problem":"exp(I*x)","solution":"cos(x) + I*sin(x)"},
+  {"domain":"number_theory","name":"binomial_expansion_2","problem":"(x+y)**2","solution":"x**2 + 2*x*y + y**2"},
+  {"domain":"linear_algebra","name":"determinant_2x2","problem":"det([[a,b],[c,d]])","solution":"a*d - b*c"},
+  {"domain":"probability","name":"bayes_rule","problem":"P(A|B)","solution":"P(B|A)*P(A)/P(B)"},
+  {"domain":"statistics","name":"variance_definition","problem":"Var(X)","solution":"E(X**2) - E(X)**2"},
+  {"domain":"geometry","name":"circle_area","problem":"r","solution":"pi*r**2"},
+  {"domain":"physics","name":"newton_second_law","problem":"m*a","solution":"F"},
+  {"domain":"physics","name":"mass_energy","problem":"m*c**2","solution":"E"},
+  {"domain":"physics","name":"ohms_law","problem":"V/R","solution":"I"},
+  {"domain":"physics","name":"ideal_gas","problem":"n*R*T/V","solution":"P"},
+  {"domain":"physics","name":"photon_energy","problem":"h*f","solution":"E"}
+]

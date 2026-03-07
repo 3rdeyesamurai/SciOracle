@@ -18,7 +18,13 @@ class SciOracleStateManager:
             "generated_code": None,
             "validation_status": "pending",
             "validation_errors": [],
+            "conversation_context": [],
+            "target_physics_domain": None,
+            "proof_status": "unverified",
+            "counterexample_trace": None,
             "ebm_energy": None,
+            "latest_discovery": None,
+            "law_declared": False,
             "discovery_visualized": False,
             "iteration_count": 0,
             "hardware_locks": {

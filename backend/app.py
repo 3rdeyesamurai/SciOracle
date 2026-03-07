@@ -3,6 +3,7 @@ import sqlite3
 import threading
 import time
 import asyncio
+import yaml
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -16,8 +17,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from ebm_math_discovery import (
     MathEBM, LLMSeqTokenizer, ASTGraphTokenizer, load_checkpoint,
-    train_ebm, init_db, log_to_db, evaluate_energy, sympy_to_nl_str, nl_to_sympy_str
+    train_ebm, init_db, log_to_db, evaluate_energy, sympy_to_nl_str, nl_to_sympy_str,
+    declare_theorem_if_sound, infer_physics_application, retrieve_analogical_conjectures
 )
+from state_manager import SciOracleStateManager
 import sympy as sp
 
 app = FastAPI(title="SciOracle Math EBM Platform")
@@ -39,19 +42,34 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MODEL_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'math_ebm.pt'))
 DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'math_knowledge.db'))
 FIGURES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'figures'))
+STATE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'state.json'))
 
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
+
+def load_scaling_config():
+    config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'config.yaml'))
+    if not os.path.exists(config_path):
+        return {}
+    try:
+        with open(config_path, "r") as f:
+            return yaml.safe_load(f) or {}
+    except Exception:
+        return {}
+
+
+def resolve_runtime_training_profile(config):
+    scaling = config.get("scaling", {}) if isinstance(config, dict) else {}
+    profile_name = str(scaling.get("profile", "high")).lower()
+    use_cpu_if_no_cuda = bool(scaling.get("fallback_to_cpu", True))
+    return {
+        "profile": profile_name,
+        "overrides": scaling.get("training_overrides", {}),
+    }, use_cpu_if_no_cuda
+
 # Database upgrade for figures
 def update_db_schema():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT image_path FROM math_discoveries LIMIT 1")
-    except sqlite3.OperationalError:
-        print("Upgrading database schema to support figures...")
-        cursor.execute("ALTER TABLE math_discoveries ADD COLUMN image_path TEXT")
-        conn.commit()
+    conn = init_db(DB_PATH)
     conn.close()
 
 update_db_schema()
@@ -79,17 +97,18 @@ class TrainingWorker(threading.Thread):
         
     def run(self):
         print("Starting continuous training daemon...")
+        config = load_scaling_config()
+        profile, fallback_to_cpu = resolve_runtime_training_profile(config)
+        interval = int(config.get("scaling", {}).get("background_retrain_interval_s", 10))
         while True:
             try:
-                # Runs a mini-training block then halts
-                # Use CPU=False typically, but we will pass cpu according to hardware
-                train_ebm(save_path=MODEL_PATH, use_cpu=False) 
+                train_ebm(save_path=MODEL_PATH, use_cpu=fallback_to_cpu, compute_profile=profile)
                 
                 # Signal hot reload
                 reload_model()
                 
                 # Sleep briefly
-                time.sleep(10)
+                time.sleep(interval)
             except Exception as e:
                 print(f"Training loop error: {e}")
                 time.sleep(30)
@@ -102,6 +121,10 @@ worker.start()
 class QueryRequest(BaseModel):
     problem: str
     solution: str
+
+class ChatRequest(BaseModel):
+    message: str
+    proposed_solution: str | None = None
 
 @app.get("/api/status")
 def get_status():
@@ -135,13 +158,133 @@ def evaluate_query(req: QueryRequest):
         return {"error": energy}
         
     log_to_db(db_conn, p_text, p_math_guess, s_text, s_math, energy, is_sound)
+    declaration = declare_theorem_if_sound(db_conn, p_text, p_math_guess, s_text, s_math, energy, is_sound)
     
     return {
         "problem_nl": p_text,
         "problem_math": p_math_guess,
         "solution_math": s_math,
         "energy": energy,
-        "is_sound": is_sound
+        "is_sound": is_sound,
+        "discovery_declaration": declaration
+    }
+
+@app.post("/api/chat")
+def chat_research(req: ChatRequest):
+    """Conversational context endpoint that stores context and suggests symbolic seeds."""
+    manager = SciOracleStateManager(STATE_PATH)
+    state = manager.read_state()
+    history = state.get("conversation_context", [])
+    history.append({"role": "user", "content": req.message})
+    history = history[-20:]
+
+    domain, attribution = infer_physics_application(req.message, req.message, req.proposed_solution or "")
+
+    conn = sqlite3.connect(DB_PATH)
+    analogs = retrieve_analogical_conjectures(conn, physics_domain=domain if domain != "symbolic_algebra" else None, limit=5)
+    conn.close()
+
+    manager.update_state({
+        "conversation_context": history,
+        "target_physics_domain": domain if domain != "symbolic_algebra" else None,
+    })
+
+    response = {
+        "message": req.message,
+        "inferred_domain": domain,
+        "attribution_method": attribution,
+        "analogical_candidates": analogs,
+        "context_window": len(history),
+    }
+
+    if req.proposed_solution and MODEL is not None:
+        query = QueryRequest(problem=req.message, solution=req.proposed_solution)
+        response["evaluation"] = evaluate_query(query)
+
+    return response
+
+@app.get("/api/research/graph")
+def research_graph_summary(limit: int = 200):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        '''
+        SELECT id, timestamp, energy, is_sound, theorem_status, physics_domain
+        FROM math_discoveries
+        ORDER BY id DESC
+        LIMIT ?
+        ''',
+        (int(limit),),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    timeline = [
+        {
+            "id": row[0],
+            "timestamp": row[1],
+            "energy": row[2],
+            "is_sound": bool(row[3]),
+            "theorem_status": row[4],
+            "physics_domain": row[5] or "unassigned",
+        }
+        for row in reversed(rows)
+    ]
+
+    domain_counts = {}
+    for point in timeline:
+        domain_counts[point["physics_domain"]] = domain_counts.get(point["physics_domain"], 0) + 1
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT src_label, dst_label
+        FROM conjecture_graph_edges
+        ORDER BY id DESC
+        LIMIT ?
+    ''', (int(limit) * 4,))
+    edges = cursor.fetchall()
+    conn.close()
+    degree = {}
+    for src, dst in edges:
+        degree[src] = degree.get(src, 0) + 1
+        degree[dst] = degree.get(dst, 0) + 1
+    top_nodes = sorted(degree.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    return {
+        "points": timeline,
+        "domain_counts": domain_counts,
+        "graph_centrality": [{"node": n, "degree": d} for n, d in top_nodes],
+        "communities": [{"label": dom, "size": c} for dom, c in domain_counts.items()],
+        "size": len(timeline),
+    }
+
+@app.get("/api/research/lineage")
+def research_lineage(limit: int = 200):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        '''
+        SELECT parent_signature, child_signature, relation_type, created_at
+        FROM conjecture_lineage
+        ORDER BY id DESC
+        LIMIT ?
+        ''',
+        (int(limit),),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return {
+        "edges": [
+            {
+                "parent_signature": r[0],
+                "child_signature": r[1],
+                "relation_type": r[2],
+                "created_at": r[3],
+            }
+            for r in rows
+        ],
+        "size": len(rows),
     }
 
 @app.post("/api/analyze")

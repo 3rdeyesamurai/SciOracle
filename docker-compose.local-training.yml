@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  trainer:
+    image: python:3.10-slim
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: >
+      bash -lc "pip install --no-cache-dir -r requirements.txt &&
+      python ebm_math_discovery.py --train --cpu"
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  api:
+    image: python:3.10-slim
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: >
+      bash -lc "pip install --no-cache-dir -r requirements.txt &&
+      uvicorn backend.app:app --host 0.0.0.0 --port 8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8000:8000"
+    depends_on:
+      - trainer
+
+  orchestrator:
+    image: python:3.10-slim
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: >
+      bash -lc "pip install --no-cache-dir -r requirements.txt &&
+      python core_agent.py"
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - api
