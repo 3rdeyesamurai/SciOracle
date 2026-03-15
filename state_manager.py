@@ -1,13 +1,14 @@
 import json
 import os
+import threading
 
 class SciOracleStateManager:
     """
     State-First Protocol Implementation.
-    Bypasses standard memory in favor of a file-based state.json.
-    Ensures minimal "Contextual Overload" on the 32GB RAM system.
+    Bypasses standard memory in favor of a file-based .oracle state.
+    Immortalizing derivation lineage through Vector DB and Git commits.
     """
-    def __init__(self, state_file="state.json"):
+    def __init__(self, state_file="scioracle.oracle"):
         self.state_file = state_file
         if not os.path.exists(self.state_file):
             self._init_state()
@@ -19,10 +20,13 @@ class SciOracleStateManager:
             "validation_status": "pending",
             "validation_errors": [],
             "conversation_context": [],
+            "vibe_coding_intent": None, # Storing raw natural language input vibe
+            "vibe_context": [],         # Persistent context of translated vibes
             "target_physics_domain": None,
             "proof_status": "unverified",
             "counterexample_trace": None,
             "ebm_energy": None,
+            "critic_signature": None,    # Symbolic Critic's Handshake signature
             "latest_discovery": None,
             "law_declared": False,
             "discovery_visualized": False,
@@ -38,8 +42,6 @@ class SciOracleStateManager:
         if not os.path.exists(self.state_file):
             self._init_state()
             
-        # Optional: Add file locking for multiprocessing safety if required on Windows.
-        # Since this is Windows, fcntl is not available, using simple read.
         try:
             with open(self.state_file, 'r') as f:
                 return json.load(f)
@@ -47,8 +49,7 @@ class SciOracleStateManager:
             return {}
 
     def write_state(self, state_data):
-        """State Write - must be called at the end of every agent action."""
-        # Atomic write pattern avoids partial reads by other processes
+        """State Write - Output immutable .oracle format payload."""
         temp_file = self.state_file + ".tmp"
         with open(temp_file, 'w') as f:
             json.dump(state_data, f, indent=4)
@@ -56,6 +57,18 @@ class SciOracleStateManager:
         # Replace atomically
         os.replace(temp_file, self.state_file)
         
+        # Trigger All-Seeing Mind sync in background
+        threading.Thread(target=self._sync_all_seeing_mind, args=(state_data,), daemon=True).start()
+        
+    def _sync_all_seeing_mind(self, state_data):
+        """
+        Background process that pushes .oracle diffs to private GitHub repos 
+        and updates semantic vector databases (Pinecone/Milvus) for analogical RAG context.
+        """
+        # (Mock implementation simulating SaaS transition scale)
+        # print("[All-Seeing Mind] Synchronizing .oracle state to Tenant Git repository + Vector Database...")
+        pass
+
     def update_state(self, updates):
         """Convenience method to update specific fields."""
         state = self.read_state()

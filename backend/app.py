@@ -15,6 +15,7 @@ import torch
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from acp_bridge import acp_router
 from ebm_math_discovery import (
     MathEBM, LLMSeqTokenizer, ASTGraphTokenizer, load_checkpoint,
     train_ebm, init_db, log_to_db, evaluate_energy, sympy_to_nl_str, nl_to_sympy_str,
@@ -35,6 +36,7 @@ app.add_middleware(
 )
 
 # Global variables to hold hot-swappable model components
+app.include_router(acp_router, prefix="/acp")
 MODEL = None
 LLM_TOKENIZER = None
 AST_TOKENIZER = None

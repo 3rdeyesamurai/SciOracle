@@ -1,0 +1,19 @@
+model:
+  hidden_dim: 128
+  num_layers: 4
+  learning_rate: 0.001
+  batch_size: 64
+  margin: 1.0
+
+training:
+  epochs_per_stage: 50
+  num_stages: 6
+  device: "cpu" # For broad compatibility, change to "cuda" if needed
+
+mcts:
+  num_simulations: 100
+  c_puct: 1.5
+  max_depth: 10
+
+database:
+  db_path: "memory/theorem.db"

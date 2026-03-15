@@ -1,23 +1,24 @@
-# Mathematical Energy-Based Model (Math-EBM)
+# SciOracle: 2026 Vibe Coding Architecture
+**Mathematical Energy-Based Model (Math-EBM)**
 
-An AI architecture designed for symbolic mathematical discovery using Graph Neural Networks (GNNs), Langevin Dynamics, and Contrastive Divergence, fully optimized for consumer-grade GPU constraints.
+An AI architecture designed for symbolic mathematical discovery using Graph Neural Networks (GNNs), Langevin Dynamics, and Contrastive Divergence. Meticulously optimized for local execution on consumer hardware (e.g., RTX 2060 with 32GB RAM) with a definitive **2026 hybrid-cloud deployment** intent.
 
-## Features
-- **Dual-Encoder Architecture:** Separate tokenizers for Natural Language inputs (`LLMSeqTokenizer` backed by HuggingFace) and mathematical verification outputs (`ASTGraphTokenizer`).
-- **Self-Improvement Cross-Attention:** A neural mechanism where arbitrary LLM sequences actively query internal mathematical AST structures to dynamically align abstract constraints.
-- **Algorithmic Experience Replay Discovery:** During Langevin optimization steps, successful identity discoveries mapped natively over SymPy evaluation are pushed into an experience verification buffer, teaching the network positive mathematical truths.
+## The Key Innovation: Vibe Coding
+SciOracle pioneers the **"Vibe Coding" architecture** — translating raw, natural language scientific intent into mathematically validated execution code. This process relies strictly on resilient, persistent state files (`state.json`) rather than ephemeral conversational memory. You describe the "vibe" of the formula, and SciOracle's dual encoders systematically graph, solve, and formally prove it.
+
+## Core Features
+- **Vibe-to-Math Translation Pipeline:** Arbitrary LLM natural language sequences actively query internal mathematical AST structures to dynamically align abstract constraints.
+- **Dual-Encoder Architecture:** Separate tokenizers for Natural Language inputs (`LLMSeqTokenizer`) and mathematical verification outputs (`ASTGraphTokenizer`).
+- **Algorithmic Experience Replay Discovery:** During Langevin optimization steps, successful identity discoveries mapped natively over SymPy evaluation are pushed into an experience verification buffer.
 - **Langevin Dynamics MCMC** continuous optimization over discrete symbolic node representations.
-- **6GB VRAM Optimization** achieved via `torch.utils.checkpoint` memory accumulation.
+- **6GB VRAM Strict Optimization** achieved via `torch.utils.checkpoint` and explicit RAM offloading on RTX 2060 architectures.
 - **Arithmetic Cold Start** phase (500 epochs) before algebraic complexity is introduced.
 - **SQLite Database Integration** seamlessly serializes Natural Language to Math representations.
 - **Offline JSON Generation** generates 10,000 algorithmic algebraic identities.
-- **Physics Attribution Layer** tags conjectures with likely applied-physics domains (e.g., EM, QM, Thermodynamics).
-- **Discovery Declaration Pipeline** promotes low-energy, symbolically-sound conjectures to theorem/law candidates with notification logging.
-- **Hardware-Scaled Runtime Profiles** support `low`, `medium`, `high` compute modes for portability across laptops, desktops, and GPU servers.
-- **Formal Proof Layer (SymPy→Z3 subset)** validates supported symbolic conjectures with counterexample trace certificates.
-- **Calibration + Uncertainty** converts raw energy into confidence and abstains as `unknown` in low-confidence bands.
-- **Formula Corpus Expansion** augments training with a cross-domain formula library (`formula_corpus.json`) for broader symbolic coverage.
-- **Conversational Context Memory** stores chat context and uses it to infer domains and retrieve analogical conjectures (`POST /api/chat`).
+- **Physics Attribution Layer** tags conjectures with likely applied-physics domains.
+- **Discovery Declaration Pipeline** promotes low-energy, symbolically-sound conjectures.
+- **Hardware-Scaled Runtime Profiles** explicitly bridge local constraints with 2026 hybrid-cloud scale-out nodes.
+- **Conversational Context Memory** stores conversational states for continuous vibe context extraction.
 
 ---
 
@@ -100,116 +101,50 @@ Because algebraic graph nodes can easily exceed 6GB VRAM limits during massive t
 python ebm_math_discovery.py --train --cpu
 ```
 
-### 2. Interactive Natural Language CLI
-Once `math_ebm.pt` weight checkpoints are serialized to disk, entering the script normally drops you into the **Interactive Discovery Shell** where you can type algebraic identities in **Plain English**.
+### 2. Launching the Graphic Vibe Interface (React UI)
+To launch the modern 2026 EBM Dashboard where you can visually inspect node graphs and input vibes natively:
+1. Ensure your backend FastAPI server is running:
+   ```bash
+   python backend/app.py
+   ```
+2. Open a new terminal and navigate to the `web-ui` directory.
+   ```bash
+   cd web-ui
+   npm install
+   npm run dev
+   ```
+3. **How to navigate and use it**: 
+   * Open your browser to the local network port provided by Vite (`http://localhost:5173`).
+   * **PDF Ingestion Zone**: Drag and drop scientific documents to systematically extract mathematical graphics and structural derivations.
+   * **EBM Discovery Shell**: Type your natural language scientific intent (e.g., "describe force acting on an object's mass") into the **Vibe Coding Intent** panel.
+   * Click **Evaluate Structural Energy** to invoke the dual-encoder models. The React frontend will wait for the EBM solver to ping back the sound energy validation via the backend API.
 
-```bash
-python ebm_math_discovery.py
-```
-
-**Example Use Case**:
-```text
-=== Mathematical EBM Interface ===
-Loading model weights...
-Model ready!
-
-Problem (Natural Language): x squared plus 5 times x plus 6
-Proposed Solution (NLP): (x plus 2) times (x plus 3)
-
-Parsed Math (Problem):      x**2 + 5*x + 6
-Parsed Math (Sol):          (x + 2)*(x + 3)
-==> Predicted Energy: 0.1245
-    (Mathematically sound logically: TRUE)
-    (Saved to knowledge database)
-```
+### 3. Launching the Proof-of-Concept IDE Plugin (ACP Simulator)
+We provide a standalone Python POC that simulates how an external IDE (like Zed or VS Code) bridges into the SciOracle validation engine using **Agent Context Protocol (ACP)** WebSockets.
+1. Ensure `python backend/app.py` is running natively in one terminal.
+2. In a separate terminal, launch the simulator:
+   ```bash
+   pip install websockets
+   python ide_acp_simulator.py
+   ```
+3. Type any vibe (e.g. "I want an equation for Kinetic Energy"). 
+4. Watch as the terminal mirrors the bi-directional IDE WebSockets! The `Planner_Agent`, `Symbolic_Critic`, and `Executor_Agent` logic faults, energy scores, and Cryptographic Hash Signatures stream directly back to your "IDE" terminal.
 
 ## Deployment and Orchestration
 
-### 1. Containing the Application
+### 1. OpenClaw Direct Interface (OpenDeepClaw Bridge)
+SciOracle operates an autonomous bridging module (`openclaw_interface.py`) to connect the isolated mathematical validation sandbox to a broader, global conversational OpenClaw orchestrator.
 
-To ensure a reproducible and isolated environment, you can containerize the SciOracle Agent Suite using either Conda or Docker.
-
-#### Option A: Conda Environment (Recommended for Local GPU Access)
-Conda provides an excellent way to manage Python dependencies while retaining native access to your local Windows environment (RTX 2060 GPU and system RAM).
-
-1. **Install Miniconda or Anaconda** if you haven't already.
-2. **Create a new Conda environment:**
-   ```bash
-   conda create -n scioracle python=3.10
-   ```
-3. **Activate the environment:**
-   ```bash
-   conda activate scioracle
-   ```
-4. **Install the required dependencies:**
-   ```bash
-   pip install torch sympy transformers z3-solver pyyaml
-   ```
-5. **Run the Math-EBM or OpenClaw Master Loop natively:**
-   ```bash
-   python core_agent.py
-   ```
-
-#### Option B: Docker Container (Recommended for Isolated Deployment)
-Using Docker encapsulates the entire environment, making it easy to deploy across different hardware setups without dependency conflicts.
-
-1. **Create a `Dockerfile` in your project root:**
-   ```dockerfile
-   FROM python:3.10-slim
-   
-   WORKDIR /app
-   
-   # Install essential system dependencies (for z3 and scientific libraries)
-   RUN apt-get update && apt-get install -y --no-install-recommends \
-       build-essential \
-       && rm -rf /var/lib/apt/lists/*
-       
-   COPY requirements.txt .
-   RUN pip install --no-cache-dir -r requirements.txt
-   
-   COPY . .
-   
-   # Set the entry point to the OpenClaw orchestrator
-   CMD ["python", "core_agent.py"]
-   ```
-2. **Create a `requirements.txt` file:**
-   ```text
-   torch
-   sympy
-   transformers
-   z3-solver
-   pyyaml
-   ```
-3. **Build the Docker Image:**
-   ```bash
-   docker build -t scioracle-agent .
-   ```
-4. **Run the Container:**
-  *(Note: GPU support in Docker on Windows requires WSL 2 and the NVIDIA Container Toolkit to be configured properly).*
-   ```bash
-   docker run -it --rm --gpus all -v ${PWD}/discoveries:/app/discoveries scioracle-agent
-   ```
-   *This command runs the container, enables GPU access via `--gpus all`, and mounts the local `discoveries/` folder so generated math logs and visual proofs are securely mirrored to your host machine.*
-
-### OpenClaw Direct Interface (OpenDeepClaw Bridge)
-
-SciOracle now includes a direct bridge module (`openclaw_interface.py`) that can push local agent state and receive remote commands from an OpenClaw/OpenDeepClaw-compatible orchestrator.
-
-1. Update `config.yaml` in the `openclaw` section:
+**How to use the OpenClaw aspects:**
+1. Open your `config.yaml` file and locate the root `openclaw` block.
+2. Flip the state:
    - `enabled: true`
-   - `base_url`: URL where OpenDeepClaw API is running
-   - `agent_id`: the SciOracle agent identifier
-   - endpoint paths for state push, command pull, and heartbeat
-2. Start the SciOracle loop:
+   - Map `base_url` to wherever your OpenDeepClaw API suite is deployed (e.g., `http://127.0.0.1:8080`).
+3. Start the Master Execution Loop:
    ```bash
    python core_agent.py
    ```
-3. SciOracle bridge process behavior:
-   - Sends heartbeat payload every 2 seconds
-   - Pulls command list from OpenClaw and applies supported commands (`set_conjecture`, `set_status`, `state_patch`)
-   - Pushes updated state back whenever Oracle, Validator, or EBM solver changes state
-
-This keeps SciOracle’s local `state.json` protocol intact while enabling direct remote orchestration from OpenDeepClaw.
+4. **Behavior**: SciOracle will immediately begin pushing persistent `.oracle` heartbeat diffs dynamically to the global framework. If the global OpenClaw LLM commands a `set_conjecture`, the local SciOracle hardware forces an isolated validation sandbox, runs the Symbolic Critic, and securely loops the verified cryptographic handshake hash back up to the Global LLM.
 
 ### Research & Development Graphical Analysis Workflow
 

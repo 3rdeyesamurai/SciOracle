@@ -84,8 +84,12 @@ def load_formula_corpus(path="formula_corpus.json"):
 
 def formula_to_sympy_safe(expr_text):
     """Parse formula text safely into a SymPy expression fallback."""
+    # SymPy reserves Q, E, I, O, S, N, C which conflicts with common physics equations.
+    safe_dict = {
+        c: sp.Symbol(c) for c in ["Q", "E", "I", "O", "S", "N", "C", "W", "V", "P", "F"]
+    }
     try:
-        return sp.sympify(expr_text)
+        return sp.parse_expr(str(expr_text), local_dict=safe_dict)
     except Exception:
         return sp.Symbol(str(expr_text).replace(" ", "_"))
 
@@ -420,9 +424,9 @@ def generate_sympy_data(num_samples=100, max_nodes=50, mode="algebraic", llm_tok
                 row = random.choice(physics_templates)
                 domain = row["domain"]
                 template_name = row["template"]
-                expanded = sp.sympify(row["problem"])
-                factored = sp.sympify(row["correct"])
-                adversarial = sp.sympify(row["adversarial"])
+                expanded = formula_to_sympy_safe(row["problem"])
+                factored = formula_to_sympy_safe(row["correct"])
+                adversarial = formula_to_sympy_safe(row["adversarial"])
             elif mode == "formula_corpus" and formula_corpus:
                 row = random.choice(formula_corpus)
                 domain = row.get("domain", "formula_corpus")
@@ -940,7 +944,11 @@ def nl_to_sympy_str(text):
     text = re.sub(r'(\d)\s*([a-zA-Z])', r'\1*\2', text)
     return text
 
-def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_profile=None):
+def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_profile=None, force_retrain=False):
+    if os.path.exists(save_path) and not force_retrain:
+        print(f"Model checkpoint '{save_path}' already exists. Skipping training. Use --force to retrain.")
+        return
+
     if db_conn is None:
         db_conn = init_db()
 
@@ -1104,14 +1112,19 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_prof
                 
                 total_loss += loss.item() * GRAD_ACCUM_STEPS
                 
-                if (i // BATCH_SIZE + 1) % GRAD_ACCUM_STEPS == 0:
+                batch_idx = i // BATCH_SIZE
+                total_batches = max(1, len(active_dataset) // BATCH_SIZE)
+                
+                if (batch_idx + 1) % GRAD_ACCUM_STEPS == 0 or (i + BATCH_SIZE) >= len(active_dataset):
                     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                     optimizer.step()
                     optimizer.zero_grad()
+                
+                percent = min(100.0, (batch_idx + 1) / total_batches * 100.0)
+                print(f"\r[{phase_name}] Epoch {epoch+1}/{epochs} | Progress: {percent:.1f}%", end="", flush=True)
                     
             avg_loss = total_loss / max(1, (len(active_dataset)//BATCH_SIZE))
-            if (epoch + 1) % max(1, epochs // 10) == 0:
-                print(f"[{phase_name}] Epoch {epoch+1}/{epochs} | CD Loss: {avg_loss:.4f} | Replay Buffer (Self-Discovered): {len(self_improvement_buffer)}")
+            print(f"\r[{phase_name}] Epoch {epoch+1}/{epochs} | CD Loss: {avg_loss:.4f} | Replay Buffer (Self-Discovered): {len(self_improvement_buffer)} | Progress: 100.0%")
 
         metrics_payload = {
             "phase": phase_name,
@@ -1224,9 +1237,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Mathematical Energy-Based Model")
     parser.add_argument("--train", action="store_true", help="Run the full training pipeline (Arithmetic Cold Start + Algebraic Discovery)")
     parser.add_argument("--cpu", action="store_true", help="Force execution on CPU for large tree sizes exceeding VRAM")
+    parser.add_argument("--force", action="store_true", help="Force retrain even if model exists")
     args = parser.parse_args()
     
     if args.train:
-        train_ebm(use_cpu=args.cpu)
+        train_ebm(use_cpu=args.cpu, force_retrain=args.force)
     else:
         interactive_interface()
