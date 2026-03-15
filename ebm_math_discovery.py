@@ -436,7 +436,15 @@ def nl_to_sympy_str(text):
     text = re.sub(r'(\d)\s*([a-zA-Z])', r'\1*\2', text)
     return text
 
-def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False):
+def train_ebm(
+    save_path="math_ebm.pt",
+    db_conn=None,
+    use_cpu=False,
+    arith_samples=2000,
+    algeb_samples=10000,
+    arith_epochs=500,
+    algeb_epochs=10,
+):
     if db_conn is None:
         db_conn = init_db()
         
@@ -447,11 +455,23 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False):
     llm_tokenizer = LLMSeqTokenizer()
     ast_tokenizer = ASTGraphTokenizer()
     
-    print("Generating Cold Start Arithmetic Dataset...")
-    arith_dataset, llm_tokenizer, ast_tokenizer, _ = generate_sympy_data(2000, max_nodes=MAX_NODES, mode="arithmetic", llm_tokenizer=llm_tokenizer, ast_tokenizer=ast_tokenizer)
+    print(f"Generating Cold Start Arithmetic Dataset ({arith_samples} samples)...")
+    arith_dataset, llm_tokenizer, ast_tokenizer, _ = generate_sympy_data(
+        arith_samples,
+        max_nodes=MAX_NODES,
+        mode="arithmetic",
+        llm_tokenizer=llm_tokenizer,
+        ast_tokenizer=ast_tokenizer,
+    )
     
-    print(f"Generating 10,000 Algebraic Identities Dataset... (SymPy executing on CPU)")
-    algeb_dataset, llm_tokenizer, ast_tokenizer, raw_json_data = generate_sympy_data(10000, max_nodes=MAX_NODES, mode="algebraic", llm_tokenizer=llm_tokenizer, ast_tokenizer=ast_tokenizer)
+    print(f"Generating Algebraic Identities Dataset ({algeb_samples} samples)... (SymPy executing on CPU)")
+    algeb_dataset, llm_tokenizer, ast_tokenizer, raw_json_data = generate_sympy_data(
+        algeb_samples,
+        max_nodes=MAX_NODES,
+        mode="algebraic",
+        llm_tokenizer=llm_tokenizer,
+        ast_tokenizer=ast_tokenizer,
+    )
     
     json_path = "algebraic_identities.json"
     with open(json_path, "w") as f:
@@ -555,11 +575,11 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False):
             if (epoch + 1) % max(1, epochs // 10) == 0:
                 print(f"[{phase_name}] Epoch {epoch+1}/{epochs} | CD Loss: {avg_loss:.4f} | Replay Buffer (Self-Discovered): {len(self_improvement_buffer)}")
 
-    # Phase 1: 500 epochs on Arithmetic
-    run_training_loop(arith_dataset, 500, "Cold Start (Arithmetic)")
-    
-    # Phase 2: 10 epochs on Algebraic dataset
-    run_training_loop(algeb_dataset, 10, "Discovery Phase (Algebraic)")
+    # Phase 1: Arithmetic cold start
+    run_training_loop(arith_dataset, arith_epochs, "Cold Start (Arithmetic)")
+
+    # Phase 2: Algebraic discovery
+    run_training_loop(algeb_dataset, algeb_epochs, "Discovery Phase (Algebraic)")
         
     print(f"Saving model checkpoint to {save_path}...")
     save_checkpoint(model, llm_tokenizer, ast_tokenizer, save_path)
@@ -650,9 +670,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Mathematical Energy-Based Model")
     parser.add_argument("--train", action="store_true", help="Run the full training pipeline (Arithmetic Cold Start + Algebraic Discovery)")
     parser.add_argument("--cpu", action="store_true", help="Force execution on CPU for large tree sizes exceeding VRAM")
+    parser.add_argument("--arith-samples", type=int, default=2000, help="Number of arithmetic training samples")
+    parser.add_argument("--algeb-samples", type=int, default=10000, help="Number of algebraic training samples")
+    parser.add_argument("--arith-epochs", type=int, default=500, help="Arithmetic cold-start epochs")
+    parser.add_argument("--algeb-epochs", type=int, default=10, help="Algebraic discovery epochs")
     args = parser.parse_args()
     
     if args.train:
-        train_ebm(use_cpu=args.cpu)
+        train_ebm(
+            use_cpu=args.cpu,
+            arith_samples=args.arith_samples,
+            algeb_samples=args.algeb_samples,
+            arith_epochs=args.arith_epochs,
+            algeb_epochs=args.algeb_epochs,
+        )
     else:
         interactive_interface()
