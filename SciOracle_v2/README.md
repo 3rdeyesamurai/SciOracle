@@ -74,6 +74,38 @@ python cli/interface.py query
 python cli/interface.py auto --iters 15
 ```
 
+## Containerization & Cloud GPU Deployment
+
+To easily deploy SciOracle v2 on a rented GPU instance (such as AWS, RunPod, Lambda Labs, or GCP), we provide a Dockerized environment.
+
+### 1. Build the Docker Image
+
+A `Dockerfile` is provided to set up the necessary CUDA and Python dependencies. Start by building the container image:
+
+```bash
+docker build -t scioracle_v2 .
+```
+
+### 2. Run on a GPU Instance
+
+Assuming you have Docker and the NVIDIA Container Toolkit installed on your cloud instance, you can spin up the container with full GPU access:
+
+```bash
+docker run --gpus all -it --rm \
+    -v $(pwd)/memory:/app/memory \
+    scioracle_v2 bash
+```
+
+*Note: We mount the `memory/` directory as a host volume to persist the theorem knowledge graph and database across container restarts.*
+
+### 3. Execute Discovery within Container
+
+Once inside the interactive terminal, you can trigger the autonomous pipeline seamlessly:
+
+```bash
+python cli/interface.py auto --iters 15
+```
+
 ## Example Discovery Output
 
 ```text

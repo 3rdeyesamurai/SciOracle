@@ -1,0 +1,6 @@
+torch-geometric
+sympy
+networkx
+z3-solver
+pyyaml
+matplotlib
