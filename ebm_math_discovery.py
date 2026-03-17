@@ -12,7 +12,7 @@ import hashlib
 import time
 from datetime import datetime
 from collections import Counter
-from backend.blockchain import Block
+from backend.blockchain import Block, DiscoveryLedger
 from torch.utils.checkpoint import checkpoint
 from transformers import AutoTokenizer
 
@@ -178,7 +178,8 @@ class MathEBM(nn.Module):
         h_y_nodes = self.encode_graph_nodes(y_emb, y_adj) # [B, N_y, d_model]
         
         # Self-Improvement Cross-Attention (Language querying Math)
-        attn_output, _ = self.cross_attention(query=h_x_nodes, key=h_y_nodes, value=h_y_nodes)
+        attn_output, attn_weights = self.cross_attention(query=h_x_nodes, key=h_y_nodes, value=h_y_nodes)
+        self.last_attn_weights = attn_weights.detach()
         
         # Global mean pooling
         h_x = attn_output.mean(dim=1) # [B, d_model]
@@ -642,7 +643,7 @@ def ast_reason_vector(expr):
     total = sum(motifs.values()) or 1
     return {k: v / total for k, v in motifs.items()}
 
-def declare_theorem_if_sound(conn, p_nl, p_math, s_nl, s_math, energy, is_sound, threshold=0.05, proof_status=None):
+def declare_theorem_if_sound(conn, p_nl, p_math, s_nl, s_math, energy, is_sound, threshold=0.05, proof_status=None, attn_weights=None):
     """Declare theorem/new law candidates with calibration + repeatability guards."""
     if not is_sound:
         return None
@@ -739,36 +740,28 @@ def declare_theorem_if_sound(conn, p_nl, p_math, s_nl, s_math, energy, is_sound,
             ),
         )
 
-    # Blockchain Minting Logic: Reward Proof of Discovery (Energy < 0.02)
-    if energy_value < 0.02 and is_sound:
-        # Check if Genesis exists
-        cursor.execute("SELECT hash, index_id FROM blocks ORDER BY index_id DESC LIMIT 1")
-        last_block_row = cursor.fetchone()
-        if last_block_row:
-            prev_hash = last_block_row[0]
-            new_index = last_block_row[1] + 1
-        else:
-            genesis = Block(0, 1700000000.0, {"message": "Genesis Block - The Beginning of SciOracle PoD Cosmos"}, "0"*64, 0.0, "Genesis")
-            cursor.execute(
-                "INSERT INTO blocks (index_id, timestamp, data_json, prev_hash, hash, energy_score, miner_address, merkle_root) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (genesis.index, genesis.timestamp, json.dumps(genesis.data), genesis.prev_hash, genesis.hash, genesis.energy_score, genesis.miner_address, genesis.merkle_root)
-            )
-            prev_hash = genesis.hash
-            new_index = 1
-            
-        block = Block(
-            index=new_index,
-            timestamp=time.time(),
-            data=message,
-            prev_hash=prev_hash,
-            energy_score=energy_value,
-            miner_address="SciOracle_Local_Miner"
-        )
-        cursor.execute(
-            "INSERT INTO blocks (index_id, timestamp, data_json, prev_hash, hash, energy_score, miner_address, merkle_root) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (block.index, block.timestamp, json.dumps(block.data), block.prev_hash, block.hash, block.energy_score, block.miner_address, block.merkle_root)
-        )
+    # Blockchain Minting Logic: Reward Proof of Discovery with Dynamic Difficulty
+    ledger = DiscoveryLedger(conn)
+    ledger.mint_block(energy_value, is_sound, message)
 
+    image_path = None
+    if attn_weights is not None and is_sound and energy_value < 0.02:
+        try:
+            from visualization_engine import generate_ast_chart
+            w = attn_weights.squeeze(0) # [L, S]
+            if w.dim() > 2:
+                w = w.mean(dim=0)
+            w = w.mean(dim=0).cpu().numpy() # [S]
+            image_path = f"discoveries/ast_chart_{signature[:12]}.png"
+            generate_ast_chart(str(s_math), w, image_path)
+            message["image_path"] = image_path
+            
+            # Update DB with image path
+            if row:
+                cursor.execute("UPDATE math_discoveries SET image_path = ? WHERE id = ?", (image_path, row[0]))
+        except Exception as e:
+            print(f"[Visualization Error] {e}")
+    
     try:
         store_conjecture_graph(conn, signature, s_math)
         store_proof_attempt(
@@ -1266,7 +1259,8 @@ def interactive_interface():
                 print("    (Saved to knowledge database)\n")
                 
                 log_to_db(db_conn, p_text, p_math_guess, s_text, s_math, energy, is_sound)
-                declaration = declare_theorem_if_sound(db_conn, p_text, p_math_guess, s_text, s_math, energy, is_sound)
+                attn_weights = getattr(model, "last_attn_weights", None)
+                declaration = declare_theorem_if_sound(db_conn, p_text, p_math_guess, s_text, s_math, energy, is_sound, attn_weights=attn_weights)
                 if declaration and declaration.get("notification") == "NEW_DISCOVERY":
                     print(
                         f"    [Discovery] {declaration['theorem_status']} in {declaration['physics_domain']} "

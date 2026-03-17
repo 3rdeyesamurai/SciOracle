@@ -2,6 +2,7 @@ import asyncio
 import json
 import sqlite3
 import time
+import websockets
 from typing import Set, Dict, Any
 from backend.blockchain import Block, Blockchain
 
@@ -11,6 +12,7 @@ class P2PNode:
         self.port = port
         self.db_path = db_path
         self.peers: Set[str] = set()
+        self.active_connections = set()
         self.blockchain = Blockchain()
         self._sync_chain_from_db()
 
@@ -66,40 +68,35 @@ class P2PNode:
         conn.close()
 
     async def start_server(self):
-        server = await asyncio.start_server(self.handle_client, self.host, self.port)
-        print(f"P2P Network Node starting on {self.host}:{self.port}")
+        print(f"P2P Network Node starting on ws://{self.host}:{self.port}")
         
         # Start the background task to poll the DB for new locally mined blocks
         asyncio.create_task(self.poll_local_db())
         
-        async with server:
-            await server.serve_forever()
+        async with websockets.serve(self.handle_client, self.host, self.port):
+            await asyncio.Future()  # run forever
 
-    async def handle_client(self, reader, writer):
-        addr = writer.get_extra_info('peername')
+    async def handle_client(self, websocket, path="/"):
+        self.active_connections.add(websocket)
         try:
-            while True:
-                data = await reader.readline()
-                if not data:
-                    break
-                message = json.loads(data.decode())
-                await self.process_message(message, writer, addr)
-        except Exception as e:
-            print(f"Connection error with {addr}: {e}")
+            async for message in websocket:
+                data = json.loads(message)
+                await self.process_message(data, websocket)
+        except websockets.exceptions.ConnectionClosed:
+            print(f"Connection closed")
         finally:
-            writer.close()
+            self.active_connections.remove(websocket)
 
-    async def process_message(self, message: Dict[str, Any], writer, addr):
+    async def process_message(self, message: Dict[str, Any], websocket):
         msg_type = message.get("type")
         
         if msg_type == "HELLO":
-            peer_address = f"{addr[0]}:{message.get('port', 5000)}"
+            peer_address = f"ws://{websocket.remote_address[0]}:{message.get('port', 5000)}"
             self.peers.add(peer_address)
             
             # Send current chain length
             response = {"type": "STATUS", "chain_length": len(self.blockchain.chain)}
-            writer.write((json.dumps(response) + "\n").encode())
-            await writer.drain()
+            await websocket.send(json.dumps(response))
             
         elif msg_type == "NEW_BLOCK":
             block_data = message.get("block")
@@ -114,14 +111,12 @@ class P2PNode:
                     # Might be a fork or we are behind, request full chain sync
                     if new_block.index > len(self.blockchain.chain):
                         req = {"type": "GET_CHAIN"}
-                        writer.write((json.dumps(req) + "\n").encode())
-                        await writer.drain()
+                        await websocket.send(json.dumps(req))
 
         elif msg_type == "GET_CHAIN":
             self._sync_chain_from_db()
             response = {"type": "RESP_CHAIN", "chain": self.blockchain.to_list()}
-            writer.write((json.dumps(response) + "\n").encode())
-            await writer.drain()
+            await websocket.send(json.dumps(response))
             
         elif msg_type == "RESP_CHAIN":
             chain_data = message.get("chain", [])
@@ -141,37 +136,32 @@ class P2PNode:
                 conn.commit()
                 conn.close()
                 
-    async def connect_to_peer(self, host: str, port: int):
+    async def connect_to_peer(self, uri: str):
         try:
-            reader, writer = await asyncio.open_connection(host, port)
+            websocket = await websockets.connect(uri)
+            self.active_connections.add(websocket)
             hello_msg = {"type": "HELLO", "port": self.port}
-            writer.write((json.dumps(hello_msg) + "\n").encode())
-            await writer.drain()
+            await websocket.send(json.dumps(hello_msg))
             
             # Start background reader for this connection
-            asyncio.create_task(self.handle_client(reader, writer))
-            self.peers.add(f"{host}:{port}")
-            print(f"[P2P] Connected to peer {host}:{port}")
-            return writer
+            asyncio.create_task(self.handle_client(websocket))
+            self.peers.add(uri)
+            print(f"[P2P] Connected to peer {uri}")
+            return websocket
         except Exception as e:
-            print(f"[P2P] Failed to connect to {host}:{port} - {e}")
+            print(f"[P2P] Failed to connect to {uri} - {e}")
             return None
 
     async def broadcast_message(self, message: Dict[str, Any]):
-        disconnected_peers = set()
-        for peer in self.peers:
-            host, port_str = peer.split(":")
-            port = int(port_str)
+        disconnected_connections = set()
+        msg_str = json.dumps(message)
+        for websocket in self.active_connections:
             try:
-                reader, writer = await asyncio.open_connection(host, port)
-                writer.write((json.dumps(message) + "\n").encode())
-                await writer.drain()
-                writer.close()
-                await writer.wait_closed()
-            except Exception:
-                disconnected_peers.add(peer)
+                await websocket.send(msg_str)
+            except websockets.exceptions.ConnectionClosed:
+                disconnected_connections.add(websocket)
         
-        self.peers -= disconnected_peers
+        self.active_connections -= disconnected_connections
 
     async def poll_local_db(self):
         """Continuously check the DB for newly minted local blocks to broadcast."""
@@ -223,13 +213,14 @@ def run_p2p_node(host='0.0.0.0', port=5000, initial_peers=None):
     
     if initial_peers:
         for p in initial_peers:
-            p_host, p_port = p.split(":")
-            loop.run_until_complete(node.connect_to_peer(p_host, int(p_port)))
+            loop.run_until_complete(node.connect_to_peer(f"ws://{p}"))
             
     try:
         loop.run_until_complete(node.start_server())
     except KeyboardInterrupt:
         pass
+    except Exception as e:
+        print(f"[P2P Error] {e}")
     finally:
         loop.close()
 

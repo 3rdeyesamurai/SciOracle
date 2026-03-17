@@ -102,3 +102,85 @@ class Blockchain:
 
     def to_list(self) -> List[Dict[str, Any]]:
         return [block.to_dict() for block in self.chain]
+
+class DiscoveryLedger:
+    def __init__(self, db_conn, initial_difficulty=0.02, blocks_per_adjustment=10, expected_block_time=10.0):
+        self.conn = db_conn
+        self.initial_difficulty = initial_difficulty
+        self.blocks_per_adjustment = blocks_per_adjustment
+        self.expected_block_time = expected_block_time
+
+    def get_current_difficulty(self) -> float:
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT timestamp, energy_score FROM blocks ORDER BY index_id DESC LIMIT ?", (self.blocks_per_adjustment,))
+        rows = cursor.fetchall()
+        
+        if len(rows) < self.blocks_per_adjustment:
+            return self.initial_difficulty
+            
+        # Reverse rows to chronological order
+        rows.reverse()
+        
+        time_taken = rows[-1][0] - rows[0][0]
+        expected_time = self.expected_block_time * self.blocks_per_adjustment
+        
+        # We look at the average difficulty in this window
+        avg_difficulty = sum(r[1] for r in rows) / len(rows)
+
+        # Base difficulty could just be adjusted by time ratio. 
+        # Lower energy_score means harder.
+        # If time_taken < expected_time, blocks were found too fast, so energy threshold must DECREASE (harder).
+        
+        # Prevent division by zero and absurd times
+        time_taken = max(1.0, time_taken)
+        ratio = time_taken / expected_time
+        
+        # Clamp adjustment to handle extreme spikes
+        ratio = max(0.5, min(2.0, ratio))
+        
+        new_difficulty = avg_difficulty * ratio
+        # Do not allow difficulty to become trivially easy (e.g. > 0.1) or impossibly hard (e.g. < 0.0001)
+        new_difficulty = max(0.0001, min(0.1, new_difficulty))
+        
+        return new_difficulty
+
+    def mint_block(self, energy_value: float, is_sound: bool, message: Dict[str, Any], miner_address: str = "SciOracle_Local_Miner"):
+        if not is_sound:
+            return False
+
+        current_diff = self.get_current_difficulty()
+        if energy_value > current_diff:
+            return False
+
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT hash, index_id FROM blocks ORDER BY index_id DESC LIMIT 1")
+        last_block_row = cursor.fetchone()
+
+        if last_block_row:
+            prev_hash = last_block_row[0]
+            new_index = last_block_row[1] + 1
+        else:
+            genesis = Block(0, 1700000000.0, {"message": "Genesis Block - The Beginning of SciOracle PoD Cosmos"}, "0"*64, 0.0, "Genesis")
+            cursor.execute(
+                "INSERT INTO blocks (index_id, timestamp, data_json, prev_hash, hash, energy_score, miner_address, merkle_root) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (genesis.index, genesis.timestamp, json.dumps(genesis.data), genesis.prev_hash, genesis.hash, genesis.energy_score, genesis.miner_address, genesis.merkle_root)
+            )
+            prev_hash = genesis.hash
+            new_index = 1
+            
+        block = Block(
+            index=new_index,
+            timestamp=time.time(),
+            data=message,
+            prev_hash=prev_hash,
+            energy_score=energy_value,
+            miner_address=miner_address
+        )
+        
+        cursor.execute(
+            "INSERT INTO blocks (index_id, timestamp, data_json, prev_hash, hash, energy_score, miner_address, merkle_root) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (block.index, block.timestamp, json.dumps(block.data), block.prev_hash, block.hash, block.energy_score, block.miner_address, block.merkle_root)
+        )
+        self.conn.commit()
+        return True
+
