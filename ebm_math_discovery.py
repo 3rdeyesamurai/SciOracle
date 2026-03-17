@@ -9,8 +9,10 @@ import sqlite3
 import json
 import argparse
 import hashlib
+import time
 from datetime import datetime
 from collections import Counter
+from backend.blockchain import Block
 from torch.utils.checkpoint import checkpoint
 from transformers import AutoTokenizer
 
@@ -737,6 +739,36 @@ def declare_theorem_if_sound(conn, p_nl, p_math, s_nl, s_math, energy, is_sound,
             ),
         )
 
+    # Blockchain Minting Logic: Reward Proof of Discovery (Energy < 0.02)
+    if energy_value < 0.02 and is_sound:
+        # Check if Genesis exists
+        cursor.execute("SELECT hash, index_id FROM blocks ORDER BY index_id DESC LIMIT 1")
+        last_block_row = cursor.fetchone()
+        if last_block_row:
+            prev_hash = last_block_row[0]
+            new_index = last_block_row[1] + 1
+        else:
+            genesis = Block(0, 1700000000.0, {"message": "Genesis Block - The Beginning of SciOracle PoD Cosmos"}, "0"*64, 0.0, "Genesis")
+            cursor.execute(
+                "INSERT INTO blocks (index_id, timestamp, data_json, prev_hash, hash, energy_score, miner_address, merkle_root) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (genesis.index, genesis.timestamp, json.dumps(genesis.data), genesis.prev_hash, genesis.hash, genesis.energy_score, genesis.miner_address, genesis.merkle_root)
+            )
+            prev_hash = genesis.hash
+            new_index = 1
+            
+        block = Block(
+            index=new_index,
+            timestamp=time.time(),
+            data=message,
+            prev_hash=prev_hash,
+            energy_score=energy_value,
+            miner_address="SciOracle_Local_Miner"
+        )
+        cursor.execute(
+            "INSERT INTO blocks (index_id, timestamp, data_json, prev_hash, hash, energy_score, miner_address, merkle_root) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (block.index, block.timestamp, json.dumps(block.data), block.prev_hash, block.hash, block.energy_score, block.miner_address, block.merkle_root)
+        )
+
     try:
         store_conjecture_graph(conn, signature, s_math)
         store_proof_attempt(
@@ -836,6 +868,19 @@ def init_db(db_path="math_knowledge.db"):
             child_signature TEXT,
             relation_type TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS blocks (
+            index_id INTEGER PRIMARY KEY,
+            timestamp REAL,
+            data_json TEXT,
+            prev_hash TEXT,
+            hash TEXT,
+            energy_score REAL,
+            miner_address TEXT,
+            merkle_root TEXT
         )
     ''')
 

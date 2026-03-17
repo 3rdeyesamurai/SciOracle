@@ -10,6 +10,7 @@ from skills.symbolic_log import execute as symbolic_execute
 from skills.ebm_solve import execute as ebm_execute
 from openclaw_interface import OpenClawBridge
 from ebm_math_discovery import init_db, retrieve_analogical_conjectures, load_formula_corpus
+from p2p_network import run_p2p_node
 
 def load_config():
     with open("config.yaml", "r") as f:
@@ -224,23 +225,31 @@ def main():
     # Spawn Sub-Agents across 12 threads using Multiprocessing
     # Oracle on RAM, Validator on CPU, Solver on GPU isolated containers
     
+    p2p_port = int(os.environ.get("P2P_PORT", 5000))
+    p2p_peer = os.environ.get("P2P_PEER")
+    p2p_peers = [p2p_peer] if p2p_peer else []
+    
+    p_network = multiprocessing.Process(target=run_p2p_node, args=('0.0.0.0', p2p_port, p2p_peers))
     p_bridge = multiprocessing.Process(target=run_openclaw_sync, args=(state_manager, bridge, config))
     p_planner = multiprocessing.Process(target=run_planner_agent, args=(state_manager, bridge, config))
     p_critic = multiprocessing.Process(target=run_symbolic_critic, args=(state_manager, bridge, config))
     p_executor = multiprocessing.Process(target=run_executor_agent, args=(state_manager, bridge, config, vram_cap))
     
     try:
+        p_network.start()
         p_bridge.start()
         p_planner.start()
         p_critic.start()
         p_executor.start()
         
+        p_network.join()
         p_bridge.join()
         p_planner.join()
         p_critic.join()
         p_executor.join()
     except KeyboardInterrupt:
         print("Shutting down SciOracle Master Loop.")
+        p_network.terminate()
         p_bridge.terminate()
         p_planner.terminate()
         p_critic.terminate()
