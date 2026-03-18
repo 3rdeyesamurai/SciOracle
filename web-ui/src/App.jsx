@@ -1,11 +1,20 @@
 import { useState, useEffect } from 'react';
 import { Blocks, Activity, Wallet, Cpu, Zap, Hash, Server, Hexagon } from 'lucide-react';
-import { BlockMath, InlineMath } from 'react-katex';
+import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import './index.css';
 
 const API_BASE = "http://localhost:8000/api";
 const SERVER_BASE = "http://localhost:8000";
+
+function MathBlock({ expression }) {
+  const html = katex.renderToString(expression, {
+    throwOnError: false,
+    displayMode: true,
+  });
+
+  return <div dangerouslySetInnerHTML={{ __html: html }} />;
+}
 
 function App() {
   const [walletInfo, setWalletInfo] = useState({ address: '...', balance: 0, symbol: 'POD', recent_transactions: [] });
@@ -169,7 +178,7 @@ function App() {
                     <div className="math-pane">
                       <div className="math-label">Theorem Proven</div>
                       <div className="latex-container">
-                        <BlockMath math={`${block.problem_math} = ${block.solution_math}`} />
+                        <MathBlock expression={`${block.problem_math} = ${block.solution_math}`} />
                       </div>
 
                       <div className="energy-badge">
