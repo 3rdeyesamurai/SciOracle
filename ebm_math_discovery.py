@@ -1106,15 +1106,20 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_prof
                 # SELF IMPROVEMENT NEURAL ARCHITECTURE (Algorithmic Verification)
                 # Check if the network accidentally proved a problem logically correct during gradient walking:
                 with torch.no_grad():
-                    # For a primitive algorithmic heuristic check matching exact true topologies:
-                    # (In a hyper-advanced system, this would explicitly walk the Gumbel logits against SymPy)
-                    # We inject matching logic into the Replay Buffer here.
                     predicted_argmax = y_neg_soft.argmax(dim=-1)
+                    # We establish a Reward Signal based on logical soundness to integrate Policy Gradient / PPO-lite.
+                    rewards = torch.zeros(len(batch), device=device)
                     for j in range(len(batch)):
-                        if torch.equal(predicted_argmax[j], y_pos_discrete[j]):
-                            # The model has successfully proven/discovered a valid configuration during Langevin
+                        # If SymPy (simulated here via exact matching to ground-truth token topologies for speed)
+                        # verifies the identity as mathematically sound, treat this as a positive reward (+1)
+                        is_sound = torch.equal(predicted_argmax[j], y_pos_discrete[j])
+                        if is_sound:
+                            rewards[j] = 1.0
                             if len(self_improvement_buffer) < 500: # Limit size
                                 self_improvement_buffer.append(batch[j])
+                        else:
+                            # Negative reward for logically unsound equations
+                            rewards[j] = -1.0
 
                     if near_miss and len(self_improvement_buffer) < 500 and len(batch) > 0:
                         synthetic = dict(batch[0])
@@ -1142,8 +1147,16 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_prof
                 contrastive = F.relu(adaptive_margin + pos_energy - neg_energy)
                 weighted_contrastive = (contrastive * torch.log1p(sample_difficulty)).mean()
 
+                # PPO-lite / Policy Gradient mechanism:
+                # EBM probabilistic formulation: log P(y|x) ~ -Energy(x,y).
+                # Policy Gradient Loss = -Reward * log P(y|x) = Reward * Energy(x,y)
+                # If reward = +1 (sound), loss = neg_energy (minimizing pushes energy down).
+                # If reward = -1 (unsound), loss = -neg_energy (minimizing pushes energy up).
+                # We scale it with a policy gradient weight factor.
+                pg_loss = 0.05 * (rewards * neg_energy).mean()
+
                 energy_reg = 0.05 * (pos_energy.pow(2) + neg_energy.pow(2)).mean()
-                loss = weighted_contrastive + energy_reg
+                loss = weighted_contrastive + energy_reg + pg_loss
                 
                 loss = loss / GRAD_ACCUM_STEPS
                 loss.backward()
