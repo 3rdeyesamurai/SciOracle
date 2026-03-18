@@ -22,6 +22,28 @@ SciOracle pioneers the **"Vibe Coding" architecture** — translating raw, natur
 
 ---
 
+## 🪙 Phase 2: The Proof of Discovery (PoD) Cryptocurrency
+SciOracle has been expanded into a fully functional decentralized cryptocurrency ecosystem secured by **Proof of Discovery (PoD)**. Instead of wasting electricity hashing meaningless strings (like Bitcoin's Proof of Work), nodes expend computation traversing the mathematical latent space.
+
+### 1. The Currency (Discovery Coin)
+A block is only minted and added to the `DiscoveryLedger` when a node discovers a mathematical identity that satisfies two physical rules:
+1. **Logical Soundness:** It must be formally proven true by the `SymPy` symbolic engine.
+2. **Algorithmic Rarity (Dynamic Difficulty):** The `MathEBM` evaluates the discovery's "Energy". The energy must be lower than the network's `target_difficulty` (e.g., $E < 0.015$). As the network hash rate increases and more discoveries are found, the difficulty algorithm dynamically tightens the energy threshold.
+The resulting blockchain is an immutable, mathematically verified Library of Alexandria.
+
+### 2. The Interface 
+Rather than a purely headless node, the network demands a visual **Desktop/Web Interface**. This interface acts as:
+- **A Crypto Wallet:** Tracking the user's minted block rewards.
+- **A Node Dashboard:** Displaying active WebSocket P2P connections and the current network difficulty.
+- **A Visual Block Explorer:** Our blocks contain complex math! The interface renders the mathematical formulas in LaTeX and displays the vibrant, color-coded **AST GCN Charts** generated natively by the cross-attention layers of the neural network during the discovery phase.
+
+### 3. Distribution & The User Experience
+The target demographic ranges from AI researchers to PC gamers with idle GPUs. 
+- **The Target Hardware:** Consumer rigs (RTX 2060+). Because of our explicit `vram_gate` and RAM/GPU multiplexing, standard household GPUs can participate without crashing.
+- **Onboarding:** The application should be distributed as a 1-click Docker container or a bundled Electron app. The average new user shouldn't need to write Python. They simply launch the program, and in the background, the isolated `Oracle_Coder` generates conjectures while the GPU attempts to minimize their energy. It feels like *Folding@Home*, but secured by a decentralized financial ledger.
+
+---
+
 ## Prerequisites
 
 To run the training loop and CLI, you will strictly need Python 3.9+ along with PyTorch, SymPy, and Transformers installed.
