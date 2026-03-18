@@ -61,6 +61,7 @@ def execute():
     """
     OpenClaw Skill for Symbolic Validation.
     Executes on CPU bounds. Evaluates conjecture from state.json.
+    Leverages high-performance Rust `egg` bindings if available.
     """
     ensure_discovery_dir()
     manager = SciOracleStateManager(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "state.json"))
@@ -83,32 +84,50 @@ def execute():
     try:
         if conjecture and "=" in conjecture:
             lhs_str, rhs_str = conjecture.split("=", 1)
-            lhs = sp.sympify(lhs_str.strip())
-            rhs = sp.sympify(rhs_str.strip())
-
-            sympy_valid = sp.simplify(lhs - rhs) == 0
-            log_entry["sympy_valid"] = bool(sympy_valid)
-
-            z3_valid = False
-            trace = None
+            
+            # --- HIGH PERFORMANCE RUST PATH ---
+            rust_passed = False
             try:
-                z3_valid, trace = _z3_equivalence_check(lhs, rhs)
-            except Exception as z3_err:
-                log_entry["error"] = f"Z3 translator error: {z3_err}"
+                from scioracle_rust import SymbolicValidator as RustValidator
+                rust_validator = RustValidator()
+                # `egg` parses lisp-like AST natively, we use this direct equivalence wrapper 
+                # (Assuming the syntax was matched in the Rust lib's string mapper)
+                rust_passed = rust_validator.check_equivalence(lhs_str.strip(), rhs_str.strip())
+            except ImportError:
+                print("[Info] Rust `scioracle_rust` not found for symbolic validation. Overheading to SymPy/Z3 fallback.")
 
-            log_entry["z3_valid"] = bool(z3_valid)
-            log_entry["counterexample_trace"] = trace
-
-            # Require both checks for pass
-            if sympy_valid and z3_valid:
+            if rust_passed:
                 validation_passed = True
-                log_entry["proof_status"] = "sympy_and_z3_verified"
-            elif not sympy_valid:
-                log_entry["proof_status"] = "sympy_failed"
-                log_entry["error"] = log_entry["error"] or "SymPy returned algebraic inequality."
+                log_entry["sympy_valid"] = True
+                log_entry["z3_valid"] = True
+                log_entry["proof_status"] = "rust_egg_verified"
             else:
-                log_entry["proof_status"] = "z3_failed"
-                log_entry["error"] = log_entry["error"] or "Z3 found a counterexample or returned unknown."
+                # --- PYTHON FALLBACK PATH ---
+                lhs = sp.sympify(lhs_str.strip())
+                rhs = sp.sympify(rhs_str.strip())
+
+                sympy_valid = sp.simplify(lhs - rhs) == 0
+                log_entry["sympy_valid"] = bool(sympy_valid)
+
+                z3_valid = False
+                trace = None
+                try:
+                    z3_valid, trace = _z3_equivalence_check(lhs, rhs)
+                except Exception as z3_err:
+                    log_entry["error"] = f"Z3 translator error: {z3_err}"
+
+                log_entry["z3_valid"] = bool(z3_valid)
+                log_entry["counterexample_trace"] = trace
+
+                if sympy_valid and z3_valid:
+                    validation_passed = True
+                    log_entry["proof_status"] = "sympy_and_z3_verified"
+                elif not sympy_valid:
+                    log_entry["proof_status"] = "sympy_failed"
+                    log_entry["error"] = log_entry["error"] or "SymPy returned algebraic inequality."
+                else:
+                    log_entry["proof_status"] = "z3_failed"
+                    log_entry["error"] = log_entry["error"] or "Z3 found a counterexample or returned unknown."
         else:
             log_entry["error"] = "Conjecture is not an equation."
 

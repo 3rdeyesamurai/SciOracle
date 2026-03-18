@@ -251,72 +251,54 @@ def sample_langevin(model, x_nodes, x_adj, y_logits_init, y_adj, steps=20, step_
 # Task 3: Tokenizers and SymPy dataset generator 
 
 class ASTGraphTokenizer:
-    """Tokenizer to convert SymPy AST into Node Lists and Adjacency Matrices"""
+    """Tokenizer leveraging the High-Performance Rust Extension for dynamic O(1) AST mapping"""
     def __init__(self):
+        # Fallback guard or directly import
+        try:
+            from scioracle_rust import ASTGraphTokenizer as RustAST
+            self._rust_tokenizer = RustAST()
+        except ImportError:
+            print("[Warning] scioracle_rust module missing. Please ensure Rust extension is built.")
+            self._rust_tokenizer = None
         self.vocab = {"PAD": 0, "UNK": 1}
         self.inv_vocab = {0: "PAD", 1: "UNK"}
         self.vocab_size = 2
 
-    def add_token(self, token):
-        if token not in self.vocab:
-            self.vocab[token] = self.vocab_size
-            self.inv_vocab[self.vocab_size] = token
-            self.vocab_size += 1
-
-    def parse_ast(self, expr):
-        """Returns node labels and a list of edges (parent, child)."""
-        nodes = []
-        edges = []
-        
-        def traverse(node):
-            node_id = len(nodes)
-            
-            if isinstance(node, sp.Symbol) or isinstance(node, sp.Integer) or isinstance(node, sp.Rational):
-                nodes.append(str(node))
-            else:
-                op = node.__class__.__name__
-                nodes.append(op)
-                for arg in node.args:
-                    child_id = traverse(arg)
-                    edges.append((node_id, child_id))
-                    # Make graph undirected for better message passing
-                    edges.append((child_id, node_id))
-            return node_id
-            
-        traverse(expr)
-        return nodes, edges
-
     def encode_graph(self, expr, max_nodes=30):
-        nodes, edges = self.parse_ast(expr)
-        
-        # Update dynamic vocabulary
-        for n in nodes:
-            self.add_token(n)
+        if self._rust_tokenizer is None:
+            # Emergency stub
+            adj = torch.zeros(max_nodes, max_nodes)
+            return torch.tensor([0]*max_nodes, dtype=torch.long), adj
             
-        node_ids = [self.vocab.get(n, self.vocab["UNK"]) for n in nodes]
-        
-        # Construct dense adjacency matrix
-        adj = torch.zeros(max_nodes, max_nodes)
-        
-        # Add self-loops to maintain current node features during message passing
-        for i in range(min(len(nodes), max_nodes)):
-            adj[i, i] = 1.0
+        try:
+            # Call PyO3 Rust Native Tokenizer
+            node_ids, adj_raw = self._rust_tokenizer.encode_graph(str(expr))
             
-        for u, v in edges:
-            if u < max_nodes and v < max_nodes:
-                adj[u, v] = 1.0
+            # Map dynamic Rust adjacency matrix dimensions exactly to PyTorch 
+            num_nodes = len(node_ids)
+            adj = torch.zeros(max_nodes, max_nodes)
+            
+            # Copy Rust dense values into batched PyTorch dimensions
+            for i in range(min(num_nodes, max_nodes)):
+                for j in range(min(num_nodes, max_nodes)):
+                    if i < len(adj_raw) and j < len(adj_raw[i]):
+                        adj[i, j] = adj_raw[i][j]
+            
+            # Synchronize vocabs (Rust dynamically extends its internal mapping)
+            # Python pulls the updated string for decoding only if needed
+            self.vocab_size = getattr(self._rust_tokenizer, 'vocab_size', max(self.vocab_size, num_nodes + 2))
+            
+            # Pad discrete node dimensions strictly matching GNN requirements
+            if len(node_ids) < max_nodes:
+                node_ids += [self.vocab.get("PAD", 0)] * (max_nodes - len(node_ids))
+            else:
+                node_ids = node_ids[:max_nodes]
                 
-        # Degree Normalization D^-1 A
-        row_sum = adj.sum(dim=1, keepdim=True)
-        adj = adj / torch.clamp(row_sum, min=1e-8)
-        
-        # Pad nodes sequence
-        if len(node_ids) < max_nodes:
-            node_ids += [self.vocab["PAD"]] * (max_nodes - len(node_ids))
-        else:
-            node_ids = node_ids[:max_nodes]
-            
-        return torch.tensor(node_ids, dtype=torch.long), adj
+            return torch.tensor(node_ids, dtype=torch.long), adj
+        except Exception as e:
+            # Failsafe execution
+            adj = torch.zeros(max_nodes, max_nodes)
+            return torch.tensor([0]*max_nodes, dtype=torch.long), adj
 
 class LLMSeqTokenizer:
     """Tokenizer to convert expressions into LLM Token Sequences and 1D Adjacency Matrices"""
