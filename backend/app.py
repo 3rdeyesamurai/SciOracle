@@ -7,6 +7,7 @@ import yaml
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import fitz  # PyMuPDF
 import torch
@@ -45,8 +46,11 @@ MODEL_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'math
 DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'math_knowledge.db'))
 FIGURES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'figures'))
 STATE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'state.json'))
+DISCOVERIES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'discoveries'))
 
 os.makedirs(FIGURES_DIR, exist_ok=True)
+os.makedirs(DISCOVERIES_DIR, exist_ok=True)
+app.mount("/discoveries", StaticFiles(directory=DISCOVERIES_DIR), name="discoveries")
 
 
 def load_scaling_config():
@@ -171,6 +175,37 @@ def evaluate_query(req: QueryRequest):
         "discovery_declaration": declaration
     }
 
+@app.post("/api/chainlink/verify")
+def chainlink_oracle_verify(req: QueryRequest):
+    """
+    Fast execution endpoint prioritized for 9s Chainlink DON timeouts.
+    Used by Smart Contracts to cryptographically mint tokens on-chain.
+    Bypasses heavier SQLite discovery persistence.
+    """
+    if not MODEL:
+        raise HTTPException(status_code=503, detail="Mathematical EBM Model Offline")
+        
+    p_math_guess = nl_to_sympy_str(req.problem)
+    s_math = nl_to_sympy_str(req.solution)
+    
+    is_sound = False
+    try:
+        is_sound = (sp.simplify(sp.sympify(p_math_guess) - sp.sympify(s_math)) == 0)
+    except Exception:
+        pass
+        
+    energy = evaluate_energy(MODEL, LLM_TOKENIZER, AST_TOKENIZER, req.problem, s_math, DEVICE)
+    
+    if isinstance(energy, str):
+        return {"error": energy}
+    
+    return {
+        "energy": float(energy),
+        "is_sound": bool(is_sound),
+        "problem_math": p_math_guess,
+        "solution_math": s_math
+    }
+    
 @app.post("/api/chat")
 def chat_research(req: ChatRequest):
     """Conversational context endpoint that stores context and suggests symbolic seeds."""
@@ -345,6 +380,96 @@ async def analyze_document(file: UploadFile = File(...)):
         "figure_names": extracted_images,
         "context_preview": context_blob
     }
+
+# --- PoD Cryptocurrency Dashboard Endpoints ---
+
+@app.get("/api/wallet")
+def get_wallet_info():
+    """Mock wallet info returning stats based on the local miner."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    # Assuming the local node mines as "SciOracle_Local_Miner"
+    miner_addr = "SciOracle_Local_Miner"
+    cursor.execute("SELECT COUNT(*) FROM blocks WHERE miner_address = ?", (miner_addr,))
+    balance = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT index_id, timestamp, hash, energy_score FROM blocks WHERE miner_address = ? ORDER BY index_id DESC LIMIT 10", (miner_addr,))
+    history = [{"index": r[0], "timestamp": r[1], "hash": r[2], "reward": 1.0, "energy": r[3]} for r in cursor.fetchall()]
+    conn.close()
+    
+    return {
+        "address": miner_addr,
+        "balance": balance,
+        "symbol": "POD",
+        "recent_transactions": history
+    }
+
+@app.get("/api/network")
+def get_network_stats():
+    """Returns network connectivity and PoD difficulty."""
+    conn = sqlite3.connect(DB_PATH)
+    from backend.blockchain import DiscoveryLedger
+    ledger = DiscoveryLedger(conn)
+    current_difficulty = ledger.get_current_difficulty()
+    
+    # Calculate Hash Rate (Blocks in last hour vs expected)
+    now = time.time()
+    one_hour_ago = now - 3600
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM blocks WHERE timestamp > ?", (one_hour_ago,))
+    blocks_per_hour = cursor.fetchone()[0]
+    conn.close()
+    
+    return {
+        "active_peers": 3,  # Mocked for visualization unless parsing active P2P connections
+        "hash_rate": f"{blocks_per_hour} Blocks/hr",
+        "dynamic_difficulty": current_difficulty,
+        "uptime": "99.99%"
+    }
+
+@app.get("/api/explorer/blocks")
+def get_recent_blocks(limit: int = 15):
+    """The Visual Block Explorer data feed."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # We join blocks with math_discoveries to extract the AST image_path if it exists.
+    # Blocks store the message dict as JSON.
+    try:
+        cursor.execute("SELECT index_id, timestamp, data_json, prev_hash, hash, energy_score, miner_address FROM blocks ORDER BY index_id DESC LIMIT ?", (limit,))
+        blocks_data = cursor.fetchall()
+        
+        blocks_feed = []
+        for r in blocks_data:
+            data_dict = json.loads(r[2]) if r[2] else {}
+            signature = data_dict.get("conjecture_signature", "")
+            
+            # Fetch image_path for this signature if missing from data_dict
+            image_path = data_dict.get("image_path")
+            if not image_path and signature:
+                cursor.execute("SELECT image_path FROM math_discoveries WHERE conjecture_signature = ?", (signature,))
+                row = cursor.fetchone()
+                if row and row[0]:
+                    image_path = row[0]
+            
+            blocks_feed.append({
+                "height": r[0],
+                "timestamp": r[1],
+                "hash": r[4],
+                "prev_hash": r[3],
+                "miner": r[6],
+                "energy": r[5],
+                "problem_math": data_dict.get("problem_math", ""),
+                "solution_math": data_dict.get("solution_math", ""),
+                "ast_chart": f"/{image_path}" if image_path else None
+            })
+    except Exception as e:
+        print(f"Error fetching blocks: {e}")
+        blocks_feed = []
+    finally:
+        conn.close()
+        
+    return {"blocks": blocks_feed}
 
 if __name__ == "__main__":
     import uvicorn
