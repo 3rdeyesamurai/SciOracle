@@ -13,8 +13,8 @@ class SciOracleStateManager:
         try:
             from scioracle_rust import SciOracleStateManager as RustStateManager
             self._rust_mgr = RustStateManager(self.state_file)
-        except ImportError:
-            print("[Warning] scioracle_rust module missing. Falling back to pure Python state (not recommended for production).")
+        except Exception:
+            print("[Warning] scioracle_rust unavailable or crashed. Using pure-Python state fallback.")
             self._rust_mgr = None
             if not os.path.exists(self.state_file):
                 self._init_fallback_state()

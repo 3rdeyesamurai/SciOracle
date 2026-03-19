@@ -473,37 +473,124 @@ def generate_sympy_data(num_samples=100, max_nodes=50, mode="algebraic", llm_tok
     
     return dataset, llm_tokenizer, ast_tokenizer, raw_json_data
 
-def save_checkpoint(model, llm_tokenizer, ast_tokenizer, path="math_ebm.pt"):
-    torch.save({
+def save_checkpoint(model, llm_tokenizer, ast_tokenizer, path="math_ebm.pt", training_state=None, optimizer=None):
+    save_dict = {
         "model_state_dict": model.state_dict(),
         "llm_vocab_size": llm_tokenizer.vocab_size,
-        "ast_vocab": ast_tokenizer.vocab,
-        "ast_inv_vocab": ast_tokenizer.inv_vocab,
+        "ast_vocab": getattr(ast_tokenizer, "vocab", {}),
+        "ast_inv_vocab": getattr(ast_tokenizer, "inv_vocab", {}),
         "ast_vocab_size": ast_tokenizer.vocab_size,
         "llm_embedding_num": model.llm_embedding.num_embeddings,
         "math_embedding_num": model.math_embedding.num_embeddings
-    }, path)
+    }
+    if training_state:
+        save_dict["training_state"] = training_state
+    if optimizer:
+        save_dict["optimizer_state_dict"] = optimizer.state_dict()
+    torch.save(save_dict, path)
 
-def load_checkpoint(path, device):
-    checkpoint = torch.load(path, map_location=device, weights_only=False)
-    # Reconstruct tokenizers
+def load_checkpoint(path, device, return_state=False):
+    raw = torch.load(path, map_location=device, weights_only=False)
+
+    # --- Detect checkpoint format ---
+    # NEW format: saved by save_checkpoint() — has metadata wrapper keys
+    # LEGACY format: raw state_dict with old layer names (tok_embed, ast_encoder, etc.)
+    is_new_format = "model_state_dict" in raw and "llm_vocab_size" in raw
+
     llm_tokenizer = LLMSeqTokenizer()
     ast_tokenizer = ASTGraphTokenizer()
-    ast_tokenizer.vocab = checkpoint["ast_vocab"]
-    ast_tokenizer.inv_vocab = checkpoint["ast_inv_vocab"]
-    ast_tokenizer.vocab_size = checkpoint["ast_vocab_size"]
-    
-    # Init model
+
+    if is_new_format:
+        # ── New wrapped format ──────────────────────────────────────────
+        state_dict = raw["model_state_dict"]
+        llm_vocab_size = raw["llm_vocab_size"]
+        ast_vocab_size = raw.get("ast_vocab_size", 2)
+        llm_embed_num  = raw.get("llm_embedding_num", llm_vocab_size)
+        math_embed_num = raw.get("math_embedding_num", ast_vocab_size)
+        ast_tokenizer.vocab     = raw.get("ast_vocab", {})
+        ast_tokenizer.inv_vocab = raw.get("ast_inv_vocab", {})
+        ast_tokenizer.vocab_size = ast_vocab_size
+    else:
+        # ── Legacy raw state_dict format ────────────────────────────────
+        # Infer sizes from the embedding tensors that were saved
+        print("[load_checkpoint] Detected LEGACY checkpoint format — adapting layer names.")
+        state_dict = {}
+        # Map old layer names → new MathEBM attribute names
+        key_map = {
+            "tok_embed.":          "llm_embedding.",
+            "pos_embed.":          "llm_embedding.",   # pos embed merged into llm emb
+            "ast_encoder.":        "gcn_layers.",
+            "llm_encoder.":        "gcn_layers.",
+            "llm_proj.":           "cross_attention.in_proj_weight",  # best-effort
+            "energy_head.":        "energy_head.",
+            "self_attn.":          "cross_attention.",
+        }
+        # First, do a direct pass for any keys that already match the new model
+        new_model_keys = set()
+        for k, v in raw.items():
+            mapped = k
+            for old, new in key_map.items():
+                if k.startswith(old):
+                    mapped = new + k[len(old):]
+                    break
+            state_dict[mapped] = v
+            new_model_keys.add(mapped)
+
+        # Get vocab sizes from the tok_embed tensor
+        if "tok_embed.weight" in raw:
+            llm_embed_num = raw["tok_embed.weight"].shape[0]
+            d_model_detected = raw["tok_embed.weight"].shape[1]
+        else:
+            llm_embed_num = llm_tokenizer.vocab_size + 100
+            d_model_detected = 256
+
+        llm_vocab_size = llm_tokenizer.vocab_size
+        ast_vocab_size = ast_tokenizer.vocab_size
+        math_embed_num = ast_vocab_size + 100
+
+        print(f"[load_checkpoint] Legacy: llm_embed={llm_embed_num}, d_model={d_model_detected}")
+
+    d_model    = 256
+    num_layers = 4
     model = MathEBM(
-        llm_vocab_size=checkpoint["llm_vocab_size"], 
-        math_vocab_size=checkpoint["ast_vocab_size"], 
-        d_model=256, 
-        num_layers=4
+        llm_vocab_size=llm_vocab_size,
+        math_vocab_size=ast_vocab_size,
+        d_model=d_model,
+        num_layers=num_layers,
     ).to(device)
-    model.llm_embedding = nn.Embedding(checkpoint["llm_embedding_num"], 256).to(device)
-    model.math_embedding = nn.Embedding(checkpoint["math_embedding_num"], 256).to(device)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    model.llm_embedding  = nn.Embedding(llm_embed_num,  d_model).to(device)
+    model.math_embedding = nn.Embedding(math_embed_num, d_model).to(device)
+
+    # Shape-safe loader: filter the state_dict to only tensors whose shapes match
+    # the freshly-created model. This lets legacy checkpoints load without RuntimeError
+    # even when layer dimensions changed between training runs.
+    current_state = model.state_dict()
+    compatible = {}
+    skipped = []
+    for k, v in state_dict.items():
+        if k in current_state:
+            if current_state[k].shape == v.shape:
+                compatible[k] = v
+            else:
+                skipped.append(f"{k}(ckpt={tuple(v.shape)} vs model={tuple(current_state[k].shape)})")
+        # keys not in current_state are simply ignored (unexpected keys)
+    if skipped:
+        print(f"[load_checkpoint] Skipped {len(skipped)} shape-mismatched tensors: {skipped[:3]}{'...' if len(skipped)>3 else ''}")
+    loaded, unexpected = model.load_state_dict(compatible, strict=False)
+    print(f"[load_checkpoint] Loaded {len(compatible)}/{len(current_state)} compatible layers.")
+    if loaded:
+        print(f"[load_checkpoint] Missing keys ({len(loaded)}): {loaded[:5]}{'...' if len(loaded)>5 else ''}")
+    if unexpected:
+        print(f"[load_checkpoint] Unexpected keys ({len(unexpected)}): {unexpected[:5]}{'...' if len(unexpected)>5 else ''}")
+
     model.eval()
+    print(f"[load_checkpoint] Model loaded on {device} ({'new' if is_new_format else 'legacy'} format).")
+    
+    if return_state:
+        training_state = raw.get("training_state", {"phase": "arithmetic", "epoch": -1, "global_step": 0})
+        opt_state = raw.get("optimizer_state_dict", None)
+        return model, llm_tokenizer, ast_tokenizer, training_state, opt_state
+        
     return model, llm_tokenizer, ast_tokenizer
 
 def infer_physics_application(problem_nl, problem_math, solution_math):
@@ -964,8 +1051,8 @@ def nl_to_sympy_str(text):
     text = re.sub(r'(\d)\s*([a-zA-Z])', r'\1*\2', text)
     return text
 
-def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_profile=None, force_retrain=False):
-    if os.path.exists(save_path) and not force_retrain:
+def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_profile=None, force_retrain=False, resume_from_state=None):
+    if os.path.exists(save_path) and not force_retrain and not resume_from_state:
         print(f"Model checkpoint '{save_path}' already exists. Skipping training. Use --force to retrain.")
         return
 
@@ -1043,15 +1130,37 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_prof
     domain_failure = Counter()
     template_failure = Counter()
 
-    def run_training_loop(dataset, epochs, phase_name):
+    # Global training state tracking for continuous resume
+    global_step = 0
+    if resume_from_state:
+        global_step = resume_from_state.get("global_step", 0)
+        print(f"[train_ebm] Resuming from global_step={global_step}")
+        
+        # Load weights and optimizer state
+        if os.path.exists(save_path):
+            print(f"[train_ebm] Loading model/optimizer weights for resume...")
+            ckpt_full = torch.load(save_path, map_location=device, weights_only=False)
+            if "model_state_dict" in ckpt_full:
+                model.load_state_dict(ckpt_full["model_state_dict"])
+            if "optimizer_state_dict" in ckpt_full:
+                optimizer.load_state_dict(ckpt_full["optimizer_state_dict"])
+
+    def run_training_loop(dataset, epochs, phase_name, start_epoch=0):
+        nonlocal global_step
         print(f"--- Starting {phase_name} ({epochs} Epochs) ---")
         model.train()
-        for epoch in range(epochs):
+        for epoch in range(start_epoch, epochs):
             total_loss = 0
             optimizer.zero_grad()
             
             # Combine generated self-improvement discoveries with the original epoch stream
-            active_dataset = dataset + self_improvement_buffer
+            # Bug Fix: Cap self-improvement samples to max 20% of dataset to prevent CD Loss explosion
+            buffer_contribution = []
+            if self_improvement_buffer:
+                needed = len(dataset) // 5  # 20% max
+                buffer_contribution = random.sample(self_improvement_buffer, min(len(self_improvement_buffer), needed))
+                
+            active_dataset = dataset + buffer_contribution
             random.shuffle(active_dataset)
             
             for i in range(0, len(active_dataset), BATCH_SIZE):
@@ -1153,11 +1262,16 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_prof
                     optimizer.step()
                     optimizer.zero_grad()
                 
+                global_step += 1
                 percent = min(100.0, (batch_idx + 1) / total_batches * 100.0)
                 print(f"\r[{phase_name}] Epoch {epoch+1}/{epochs} | Progress: {percent:.1f}%", end="", flush=True)
                     
             avg_loss = total_loss / max(1, (len(active_dataset)//BATCH_SIZE))
             print(f"\r[{phase_name}] Epoch {epoch+1}/{epochs} | CD Loss: {avg_loss:.4f} | Replay Buffer (Self-Discovered): {len(self_improvement_buffer)} | Progress: 100.0%")
+
+            # Save per-epoch for continuous resume safety
+            t_state = {"phase": phase_name, "epoch": epoch, "global_step": global_step}
+            save_checkpoint(model, llm_tokenizer, ast_tokenizer, save_path, training_state=t_state, optimizer=optimizer)
 
         metrics_payload = {
             "phase": phase_name,
@@ -1170,10 +1284,20 @@ def train_ebm(save_path="math_ebm.pt", db_conn=None, use_cpu=False, compute_prof
             f.write(json.dumps(metrics_payload) + "\n")
 
     # Phase 1: arithmetic warm-up
-    run_training_loop(arith_dataset, arith_epochs, "Cold Start (Arithmetic)")
-    
+    current_phase = resume_from_state.get("phase", "") if resume_from_state else ""
+    current_epoch = resume_from_state.get("epoch", -1) if resume_from_state else -1
+
+    if current_phase == "Cold Start (Arithmetic)" and current_epoch < arith_epochs - 1:
+        run_training_loop(arith_dataset, arith_epochs, "Cold Start (Arithmetic)", start_epoch=current_epoch + 1)
+    elif not current_phase or current_phase == "none": # Fresh start
+        run_training_loop(arith_dataset, arith_epochs, "Cold Start (Arithmetic)")
+
     # Phase 2: algebraic discovery
-    run_training_loop(algeb_dataset, algeb_epochs, "Discovery Phase (Algebraic)")
+    # Check if arithmetic phase was completed or skipped, and if we need to resume algebraic
+    if current_phase == "Discovery Phase (Algebraic)" and current_epoch < algeb_epochs - 1:
+        run_training_loop(algeb_dataset, algeb_epochs, "Discovery Phase (Algebraic)", start_epoch=current_epoch + 1)
+    elif current_phase != "Discovery Phase (Algebraic)": # Either fresh or just finished arith
+        run_training_loop(algeb_dataset, algeb_epochs, "Discovery Phase (Algebraic)")
         
     print(f"Saving model checkpoint to {save_path}...")
     save_checkpoint(model, llm_tokenizer, ast_tokenizer, save_path)

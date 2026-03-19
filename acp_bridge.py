@@ -4,8 +4,14 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from state_manager import SciOracleStateManager
 
 acp_router = APIRouter()
-# Binds directly to the central persistence layer
-manager = SciOracleStateManager() 
+# Lazy-initialize so a crashing Rust extension doesn't kill the whole app at import time
+_manager = None
+
+def get_manager():
+    global _manager
+    if _manager is None:
+        _manager = SciOracleStateManager()
+    return _manager
 
 @acp_router.websocket("/v1/validate")
 async def acp_validate(websocket: WebSocket):
@@ -13,6 +19,7 @@ async def acp_validate(websocket: WebSocket):
     Streams code blocks or natural language "vibes" directly from IDE window 
     into the EBM validation queue.
     """
+    manager = get_manager()
     await websocket.accept()
     try:
         while True:
@@ -21,12 +28,11 @@ async def acp_validate(websocket: WebSocket):
                 payload = json.loads(data)
                 vibe_intent = payload.get("vibe", "")
                 
-                # Push the vibe directly into the Planner agent's state
                 if vibe_intent:
                     manager.update_state({
                         "vibe_coding_intent": vibe_intent,
                         "validation_status": "pending",
-                        "current_conjecture": None, # Force planner generation
+                        "current_conjecture": None,
                         "generated_code": None
                     })
                     await websocket.send_json({"status": "vibe_received", "intent": vibe_intent})
@@ -39,9 +45,9 @@ async def acp_validate(websocket: WebSocket):
 @acp_router.websocket("/v1/state")
 async def acp_state_sync(websocket: WebSocket):
     """
-    Continuously syncs SciOracle's .oracle state back to the IDE, projecting energy scores, 
-    graph traces, and mathematical faults inline as virtual text or diagnostic highlights.
+    Continuously syncs SciOracle's .oracle state back to the IDE.
     """
+    manager = get_manager()
     await websocket.accept()
     try:
         last_iteration = -1
@@ -51,7 +57,6 @@ async def acp_state_sync(websocket: WebSocket):
             current_iteration = state.get("iteration_count", 0)
             current_status = state.get("validation_status")
             
-            # Broadcast state mutation triggers back to the IDE via ACP
             if current_iteration != last_iteration or current_status != last_status:
                 await websocket.send_json({
                     "acp_type": "state_diagnostic",
@@ -65,6 +70,6 @@ async def acp_state_sync(websocket: WebSocket):
                 last_iteration = current_iteration
                 last_status = current_status
                 
-            await asyncio.sleep(0.5) # Poll rate
+            await asyncio.sleep(0.5)
     except WebSocketDisconnect:
         print("IDE Client disconnected from /acp/v1/state")

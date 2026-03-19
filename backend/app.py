@@ -4,6 +4,7 @@ import threading
 import time
 import asyncio
 import yaml
+import json
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -105,16 +106,24 @@ class TrainingWorker(threading.Thread):
         print("Starting continuous training daemon...")
         config = load_scaling_config()
         profile, fallback_to_cpu = resolve_runtime_training_profile(config)
-        interval = int(config.get("scaling", {}).get("background_retrain_interval_s", 10))
         while True:
             try:
-                train_ebm(save_path=MODEL_PATH, use_cpu=fallback_to_cpu, compute_profile=profile)
+                # Load training state to resume
+                resume_state = None
+                if os.path.exists(MODEL_PATH):
+                    try:
+                        ckpt = torch.load(MODEL_PATH, map_location="cpu", weights_only=False)
+                        resume_state = ckpt.get("training_state", None)
+                    except:
+                        pass
+                
+                train_ebm(save_path=MODEL_PATH, use_cpu=fallback_to_cpu, compute_profile=profile, force_retrain=True, resume_from_state=resume_state)
                 
                 # Signal hot reload
                 reload_model()
                 
-                # Sleep briefly
-                time.sleep(interval)
+                # Sleep briefly if we finish everything, otherwise loop picks up next epoch/phase
+                time.sleep(10)
             except Exception as e:
                 print(f"Training loop error: {e}")
                 time.sleep(30)

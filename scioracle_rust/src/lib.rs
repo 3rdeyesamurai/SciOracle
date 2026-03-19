@@ -1,16 +1,18 @@
+#![allow(non_local_definitions)]
+
 use pyo3::prelude::*;
 
+mod blockchain;
+mod state_manager;
 mod tokenizer;
 mod validator;
-mod state_manager;
-mod blockchain;
 
+use state_manager::SciOracleStateManager;
 use tokenizer::ASTGraphTokenizer;
 use validator::SymbolicValidator;
-use state_manager::SciOracleStateManager;
 
 #[pymodule]
-fn scioracle_rust(py: Python, m: &PyModule) -> PyResult<()> {
+fn scioracle_rust(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<ASTGraphTokenizer>()?;
     m.add_class::<SymbolicValidator>()?;
     m.add_class::<SciOracleStateManager>()?;

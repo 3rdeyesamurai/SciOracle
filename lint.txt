@@ -1,0 +1,27 @@
+﻿.\SciOracle_v2\cli\interface.py:2:1: F401 'sys' imported but unused
+.\SciOracle_v2\memory\theorem_graph.py:2:1: F401 'sympy as sp' imported but unused
+.\SciOracle_v2\memory\theorem_graph.py:3:1: F401 'matplotlib.pyplot as plt' imported but unused
+.\SciOracle_v2\symbolic\ast_parser.py:3:1: F401 'typing.Dict' imported but unused
+.\SciOracle_v2\symbolic\ast_parser.py:3:1: F401 'typing.List' imported but unused
+.\SciOracle_v2\symbolic\ast_parser.py:3:1: F401 'typing.Any' imported but unused
+.\SciOracle_v2\training\trainer.py:2:1: F401 'torch.nn' imported but unused
+.\SciOracle_v2\verification\z3_validator.py:2:1: F401 'z3.implies' imported but unused
+.\SciOracle_v2\verification\z3_validator.py:2:1: F401 'z3.simplify as z3_simplify' imported but unused
+.\agentic_model_architecture.py:3:1: F401 'torch.nn.functional as F' imported but unused
+.\backend\app.py:5:1: F401 'asyncio' imported but unused
+.\backend\app.py:8:1: F401 'fastapi.Depends' imported but unused
+.\backend\app.py:10:1: F401 'fastapi.responses.JSONResponse' imported but unused
+.\backend\app.py:21:1: F401 'ebm_math_discovery.MathEBM' imported but unused
+.\backend\app.py:21:1: F401 'ebm_math_discovery.LLMSeqTokenizer' imported but unused
+.\backend\app.py:21:1: F401 'ebm_math_discovery.ASTGraphTokenizer' imported but unused
+.\backend\app.py:21:1: F401 'ebm_math_discovery.sympy_to_nl_str' imported but unused
+.\backend\blockchain.py:4:1: F401 'typing.Optional' imported but unused
+.\ebm_math_discovery.py:12:1: F401 'time' imported but unused
+.\ebm_math_discovery.py:15:1: F401 'backend.blockchain.Block' imported but unused
+.\p2p_network.py:4:1: F401 'time' imported but unused
+.\sandbox_manager.py:1:1: F401 'os' imported but unused
+.\sandbox_manager.py:3:1: F401 'subprocess' imported but unused
+.\sandbox_manager.py:4:1: F401 'threading' imported but unused
+.\test_blockchain.py:2:1: F401 'sqlite3' imported but unused
+.\test_blockchain.py:3:1: F401 'time' imported but unused
+.\test_blockchain.py:5:1: F401 'backend.blockchain.Blockchain' imported but unused

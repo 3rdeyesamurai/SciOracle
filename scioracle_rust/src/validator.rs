@@ -1,5 +1,7 @@
-use pyo3::prelude::*;
+#![allow(non_local_definitions)]
+
 use egg::{rewrite as rw, *};
+use pyo3::prelude::*;
 
 define_language! {
     enum Math {
@@ -12,7 +14,7 @@ define_language! {
     }
 }
 
-pub fn make_rules() -> Vec<Rewrite<Math, ()>> {
+fn make_rules() -> Vec<Rewrite<Math, ()>> {
     vec![
         rw!("commute-add"; "(+ ?a ?b)" => "(+ ?b ?a)"),
         rw!("commute-mul"; "(* ?a ?b)" => "(* ?b ?a)"),

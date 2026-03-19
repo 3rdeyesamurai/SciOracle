@@ -1,10 +1,12 @@
-use pyo3::prelude::*;
+#![allow(non_local_definitions)]
+
 use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::fs;
 use std::sync::{Arc, RwLock};
-use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct OracleState {
@@ -16,7 +18,7 @@ pub struct OracleState {
     pub ebm_energy: Option<f32>,
     pub critic_signature: Option<String>,
     pub proof_status: String,
-    
+
     // Using a catch-all for extra dynamics
     #[serde(flatten)]
     pub extra: HashMap<String, Value>,
@@ -73,7 +75,7 @@ impl SciOracleStateManager {
     pub fn update_state(&self, json_updates: String) -> PyResult<()> {
         let updates: HashMap<String, Value> = serde_json::from_str(&json_updates)
             .map_err(|e| PyValueError::new_err(format!("Deserialization error: {}", e)))?;
-            
+
         let mut next_state = {
             let guard = self.state.read().unwrap();
             guard.clone() // Immutability transition wrapper, explicitly copying the struct
@@ -81,26 +83,45 @@ impl SciOracleStateManager {
 
         // State Transition modifications
         if let Some(c) = updates.get("current_conjecture") {
-            next_state.current_conjecture = if c.is_null() { None } else { Some(c.as_str().unwrap_or("").to_string()) };
+            next_state.current_conjecture = if c.is_null() {
+                None
+            } else {
+                Some(c.as_str().unwrap_or("").to_string())
+            };
         }
         if let Some(v) = updates.get("validation_status") {
             next_state.validation_status = v.as_str().unwrap_or("pending").to_string();
         }
         if let Some(errs) = updates.get("validation_errors") {
             if let Some(array) = errs.as_array() {
-                next_state.validation_errors = array.iter().map(|e| e.as_str().unwrap_or("").to_string()).collect();
+                next_state.validation_errors = array
+                    .iter()
+                    .map(|e| e.as_str().unwrap_or("").to_string())
+                    .collect();
             }
         }
         if let Some(i) = updates.get("iteration_count") {
             next_state.iteration_count = i.as_u64().unwrap_or(0) as u32;
         }
         if let Some(s) = updates.get("critic_signature") {
-             next_state.critic_signature = if s.is_null() { None } else { Some(s.as_str().unwrap_or("").to_string()) };
+            next_state.critic_signature = if s.is_null() {
+                None
+            } else {
+                Some(s.as_str().unwrap_or("").to_string())
+            };
         }
-        
+
         // Push remaining updates into explicit extra blob
         for (k, v) in updates.into_iter() {
-            if !["current_conjecture", "validation_status", "validation_errors", "iteration_count", "critic_signature"].contains(&k.as_str()) {
+            if ![
+                "current_conjecture",
+                "validation_status",
+                "validation_errors",
+                "iteration_count",
+                "critic_signature",
+            ]
+            .contains(&k.as_str())
+            {
                 next_state.extra.insert(k, v);
             }
         }
@@ -109,7 +130,7 @@ impl SciOracleStateManager {
             let mut guard = self.state.write().unwrap();
             *guard = next_state.clone();
         }
-        
+
         self.persist(&next_state);
         Ok(())
     }

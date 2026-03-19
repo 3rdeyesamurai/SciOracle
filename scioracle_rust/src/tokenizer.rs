@@ -1,3 +1,5 @@
+#![allow(non_local_definitions)]
+
 use pyo3::prelude::*;
 use std::collections::HashMap;
 
@@ -19,7 +21,7 @@ impl ASTGraphTokenizer {
         inv_vocab.insert(0, "PAD".to_string());
         vocab.insert("UNK".to_string(), 1);
         inv_vocab.insert(1, "UNK".to_string());
-        
+
         Self {
             vocab,
             inv_vocab,
@@ -48,9 +50,12 @@ impl ASTGraphTokenizer {
         let mut edges: Vec<(usize, usize)> = vec![];
 
         // Replace basic formatting to isolate symbols using spaces
-        let formatted = ast_string.replace("(", "( ").replace(")", " )").replace("+", " + ");
+        let formatted = ast_string
+            .replace("(", "( ")
+            .replace(")", " )")
+            .replace("+", " + ");
         let tokens: Vec<&str> = formatted.split_whitespace().collect();
-        
+
         // Construct adjacency recursively without hard max_nodes limit clip
         for (idx, token) in tokens.iter().enumerate() {
             nodes.push(token.to_string());
