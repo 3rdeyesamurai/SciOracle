@@ -1,0 +1,21 @@
+{
+    "current_conjecture": null,
+    "generated_code": null,
+    "validation_status": "pending",
+    "validation_errors": [],
+    "conversation_context": [],
+    "vibe_coding_intent": null,
+    "vibe_context": [],
+    "target_physics_domain": null,
+    "proof_status": "unverified",
+    "counterexample_trace": null,
+    "ebm_energy": null,
+    "critic_signature": null,
+    "latest_discovery": null,
+    "law_declared": false,
+    "discovery_visualized": false,
+    "iteration_count": 0,
+    "hardware_locks": {
+        "gpu_in_use": false
+    }
+}

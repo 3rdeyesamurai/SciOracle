@@ -1,273 +1,203 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
+import { Blocks, Activity, Wallet, Cpu, Zap, Hash, Server, Hexagon } from 'lucide-react';
+import { BlockMath, InlineMath } from 'react-katex';
+import 'katex/dist/katex.min.css';
 import './index.css';
 
 const API_BASE = "http://localhost:8000/api";
+const SERVER_BASE = "http://localhost:8000";
 
 function App() {
-  const [status, setStatus] = useState({ online: false, model_loaded: false, device: 'N/A', figures_count: 0 });
-  
-  // Query State
-  const [problemText, setProblemText] = useState('');
-  const [solutionText, setSolutionText] = useState('');
-  const [queryResult, setQueryResult] = useState(null);
-  const [isQuerying, setIsQuerying] = useState(false);
-  
-  // PDF Analysis State
-  const [isDragging, setIsDragging] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const fileInputRef = useRef(null);
+  const [walletInfo, setWalletInfo] = useState({ address: '...', balance: 0, symbol: 'POD', recent_transactions: [] });
+  const [networkStats, setNetworkStats] = useState({ active_peers: 0, hash_rate: '0', dynamic_difficulty: 0, uptime: '0%' });
+  const [blocks, setBlocks] = useState([]);
+  const [systemStatus, setSystemStatus] = useState({ online: false, device: 'N/A' });
 
   useEffect(() => {
-    // Poll Backend Status
-    const fetchStatus = async () => {
+    const fetchData = async () => {
       try {
-        const res = await fetch(`${API_BASE}/status`);
-        if(res.ok) {
-          const data = await res.json();
-          setStatus({ online: true, ...data });
+        const [wRes, nRes, bRes, sRes] = await Promise.all([
+          fetch(`${API_BASE}/wallet`).catch(() => null),
+          fetch(`${API_BASE}/network`).catch(() => null),
+          fetch(`${API_BASE}/explorer/blocks?limit=20`).catch(() => null),
+          fetch(`${API_BASE}/status`).catch(() => null)
+        ]);
+
+        if (wRes?.ok) setWalletInfo(await wRes.json());
+        if (nRes?.ok) setNetworkStats(await nRes.json());
+        if (bRes?.ok) {
+          const bData = await bRes.json();
+          setBlocks(bData.blocks || []);
+        }
+        if (sRes?.ok) {
+          const sData = await sRes.json();
+          setSystemStatus({ online: sData.status === 'online', device: sData.device });
         }
       } catch (err) {
-        setStatus(s => ({ ...s, online: false }));
+        console.error("Dashboard sync error:", err);
       }
     };
-    
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 3000);
+
+    fetchData();
+    const interval = setInterval(fetchData, 5000); // Live real-time updates
     return () => clearInterval(interval);
   }, []);
 
-  const handleQuerySubmit = async (e) => {
-    e.preventDefault();
-    if (!problemText || !solutionText) return;
-    
-    setIsQuerying(true);
-    setQueryResult(null);
-    try {
-      const res = await fetch(`${API_BASE}/query`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ problem: problemText, solution: solutionText })
-      });
-      const data = await res.json();
-      setQueryResult(data);
-    } catch (err) {
-      console.error(err);
-      setQueryResult({ error: "Failed to connect to SciOracle Backend." });
-    } finally {
-      setIsQuerying(false);
-    }
-  };
-
-  const handleFileUpload = async (file) => {
-    if (!file || file.type !== 'application/pdf') {
-      alert("Please upload a valid PDF document.");
-      return;
-    }
-    
-    setIsAnalyzing(true);
-    setAnalysisResult(null);
-    
-    const formData = new FormData();
-    formData.append("file", file);
-    
-    try {
-      const res = await fetch(`${API_BASE}/analyze`, {
-        method: "POST",
-        body: formData
-      });
-      const data = await res.json();
-      setAnalysisResult(data);
-      // Let's seed the query panel with extracted context
-      if(data.context_preview) {
-         setProblemText(data.context_preview);
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Failed to analyze document.");
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
-  // Drag Drop Handlers
-  const onDragOver = e => { e.preventDefault(); setIsDragging(true); };
-  const onDragLeave = () => setIsDragging(false);
-  const onDrop = e => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFileUpload(e.dataTransfer.files[0]);
-    }
-  };
-
   return (
     <div className="app-container">
-      {/* Sidebar / Dashboard */}
+      {/* Sidebar / Wallet */}
       <aside className="sidebar glass-panel">
         <div className="brand">
-          <div className="brand-icon">Ω</div>
-          <h1>SciOracle EBM</h1>
+          <div className="brand-icon"><Hexagon size={28} /></div>
+          <h1>SciOracle PoD</h1>
         </div>
-        
+
         <div className="status-card glass-panel" style={{ background: 'rgba(0,0,0,0.3)' }}>
           <div className="status-header">
-            System Core
-            <div className="status-indicator">
-              {status.online ? 'Online' : 'Offline'}
-              <div className={`dot ${!status.online ? 'offline' : ''}`} />
-            </div>
+            Crypto Wallet
+            <Wallet size={16} color="var(--accent)" />
           </div>
-          <div className="stat-row">
-            <span>Hardware Target</span>
-            <span className="stat-value" style={{ textTransform: 'uppercase' }}>{status.device}</span>
-          </div>
-          <div className="stat-row">
-            <span>Model State</span>
-            <span className="stat-value" style={{ color: status.model_loaded ? '#10b981':'#f59e0b'}}>
-              {status.model_loaded ? 'Hot-Swapped' : 'Training...'}
+          <div className="stat-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Local Address</span>
+            <span className="code-text" style={{ fontSize: '0.85rem', wordBreak: 'break-all' }}>
+              {walletInfo.address}
             </span>
           </div>
           <div className="stat-row">
-            <span>Extracted Figures</span>
-            <span className="stat-value">{status.figures_count} Items</span>
+            <span>Total Minted</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Zap size={18} color="#fbbf24" fill="#fbbf24" />
+              <span className="stat-value" style={{ fontSize: '1.5rem', color: '#fbbf24' }}>
+                {walletInfo.balance.toLocaleString()} {walletInfo.symbol}
+              </span>
+            </div>
           </div>
         </div>
-        
-        <div style={{ marginTop: 'auto', fontSize: '0.85rem', color: 'var(--text-muted)'}}>
-          <p>Dual-Encoder GNN Engine enabled.</p>
-          <p>Continuous Self-Improvement active.</p>
+
+        <div className="tx-history">
+          <h3 className="section-title"><Activity size={16} /> Recent Transactions</h3>
+          <div className="tx-list">
+            {walletInfo.recent_transactions.map((tx, idx) => (
+              <div key={idx} className="tx-item">
+                <div className="tx-left">
+                  <span className="tx-hash">tx_{tx.hash.substring(0, 8)}</span>
+                  <span className="tx-reward">+{tx.reward} POD</span>
+                </div>
+                <div className="tx-right">
+                  <span className="tx-time">Block #{tx.index}</span>
+                </div>
+              </div>
+            ))}
+            {walletInfo.recent_transactions.length === 0 && (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No recent transactions. Mine a block!</div>
+            )}
+          </div>
         </div>
       </aside>
 
-      {/* Main Execution View */}
+      {/* Main Content Area */}
       <main className="main-content">
-        
-        {/* PDF Ingestion Zone */}
-        <section 
-          className={`upload-zone glass-panel ${isDragging ? 'drag-active' : ''}`}
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-          onClick={() => fileInputRef.current.click()}
-        >
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={(e) => handleFileUpload(e.target.files[0])}
-            accept=".pdf" 
-            style={{ display: 'none' }} 
-          />
-          <div className="upload-icon">📄</div>
-          {isAnalyzing ? (
-            <>
-              <div className="loader-spinner" />
-              <p>PyMuPDF Extracting Knowledge...</p>
-            </>
-          ) : (
-            <>
-              <h3>Upload PDF for Structural Analysis</h3>
-              <p>Drag and drop scientific documents here to extract Graphical Figures and NLP representations.</p>
-            </>
-          )}
-        </section>
-        
-        {analysisResult && (
-           <div className="result-card glass-panel" style={{ borderLeft: '4px solid var(--accent)' }}>
-             <h3>PDF Breakdown: {analysisResult.filename}</h3>
-             <div className="result-grid">
-               <div>
-                  <p style={{ color: 'var(--text-muted)' }}>Characters Evaluated</p>
-                  <div className="energy-score" style={{ fontSize: '1.8rem', background: 'linear-gradient(to right, #60a5fa, #3b82f6)' }}>
-                    {analysisResult.characters_extracted}
-                  </div>
-               </div>
-               <div>
-                  <p style={{ color: 'var(--text-muted)' }}>Figures Emitted</p>
-                  <div className="energy-score" style={{ fontSize: '1.8rem', background: 'linear-gradient(to right, #60a5fa, #3b82f6)' }}>
-                    {analysisResult.figures_extracted}
-                  </div>
-               </div>
-             </div>
-             {analysisResult.figures_extracted > 0 && (
-                <div style={{ marginTop: '1rem', color: 'var(--text-muted)', fontSize: '0.9rem'}}>
-                  Extracted and linked: {analysisResult.figure_names.join(', ')}
-                </div>
-             )}
-           </div>
-        )}
+        {/* Node Dashboard Header */}
+        <section className="dashboard-grid">
+          <div className="dash-card glass-panel">
+            <div className="dash-icon" style={{ background: 'rgba(99, 102, 241, 0.2)', color: '#818cf8' }}>
+              <Server size={24} />
+            </div>
+            <div className="dash-info">
+              <span className="dash-label">P2P Network Hash Rate</span>
+              <span className="dash-value">{networkStats.hash_rate}</span>
+            </div>
+          </div>
 
-        {/* Math Reasoning EBM Platform */}
-        <section className="query-card glass-panel">
-          <h2>Interactive EBM Discovery Shell</h2>
-          <form onSubmit={handleQuerySubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            <div className="input-group">
-              <label>Natural Language Problem (GPT-2 Sequence Scope)</label>
-              <input 
-                type="text" 
-                value={problemText} 
-                onChange={e => setProblemText(e.target.value)} 
-                placeholder="e.g., x squared plus five x plus six"
-                required
-              />
+          <div className="dash-card glass-panel">
+            <div className="dash-icon" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#f87171' }}>
+              <Activity size={24} />
             </div>
-            <div className="input-group">
-              <label>Mathematical Proposed Solution (AST Graph Scope)</label>
-              <input 
-                type="text" 
-                value={solutionText} 
-                onChange={e => setSolutionText(e.target.value)} 
-                placeholder="e.g., (x+2)*(x+3)"
-                required
-              />
+            <div className="dash-info">
+              <span className="dash-label">Dynamic Difficulty (E Threshold)</span>
+              <span className="dash-value">E &lt; {networkStats.dynamic_difficulty.toFixed(5)}</span>
             </div>
-            
-            <button type="submit" className="btn" disabled={isQuerying || !status.model_loaded}>
-              {isQuerying ? <div className="loader-spinner" /> : 'Evaluate Structural Energy'}
-            </button>
-          </form>
+          </div>
+
+          <div className="dash-card glass-panel">
+            <div className="dash-icon" style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#34d399' }}>
+              <Blocks size={24} />
+            </div>
+            <div className="dash-info">
+              <span className="dash-label">Active WebSocket Peers</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className="dash-value">{networkStats.active_peers} Nodes</span>
+                <div className="pulsing-dot success"></div>
+              </div>
+            </div>
+          </div>
+
+          <div className="dash-card glass-panel">
+            <div className="dash-icon" style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24' }}>
+              <Cpu size={24} />
+            </div>
+            <div className="dash-info">
+              <span className="dash-label">Hardware VRAM Gate</span>
+              <span className="dash-value" style={{ textTransform: 'uppercase' }}>{systemStatus.device}</span>
+            </div>
+          </div>
         </section>
 
-        {/* EBM Energy Render */}
-        {queryResult && (
-          <div className="result-card glass-panel">
-            {queryResult.error ? (
-               <div style={{ color: 'var(--error)' }}>
-                  <h4>Evaluation Failed</h4>
-                  <p>{queryResult.error}</p>
-               </div>
+        {/* Visual Block Explorer */}
+        <section className="explorer-section">
+          <h2 className="section-title" style={{ fontSize: '1.5rem', marginBottom: '1.5rem' }}>
+            <Hash size={24} color="var(--accent)" /> Visual Block Explorer
+          </h2>
+
+          <div className="blocks-container">
+            {blocks.length === 0 ? (
+              <div className="glass-panel" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                Syncing blocks from local DiscoveryLedger...
+              </div>
             ) : (
-              <>
-                <h3 style={{ borderBottom: '1px solid var(--panel-border)', paddingBottom: '1rem' }}>EBM Verdict & Dual-Encoder Mapping</h3>
-                
-                <div className="result-grid">
-                  <div>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Predicted Landscape Energy</span>
-                    <div>
-                      <span className="energy-score">{queryResult.energy.toFixed(4)}</span>
-                    </div>
-                    
-                    <div className={`soundness-badge ${queryResult.is_sound ? 'true' : 'false'}`}>
-                      {queryResult.is_sound ? '✓ Mathematically Validated' : '✗ Logic Flaw Detected'}
+              blocks.map((block, idx) => (
+                <div key={idx} className="block-card glass-panel">
+                  <div className="block-header">
+                    <div className="block-badge">Block #{block.height}</div>
+                    <div className="block-meta">
+                      <span className="hash-text" title={block.hash}>Hash: {block.hash.substring(0, 16)}...</span>
+                      <span className="time-text">{new Date(block.timestamp * 1000).toLocaleString()}</span>
                     </div>
                   </div>
-                  
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <div>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>NLP Extracted Math Vector</span>
-                      <div className="code-block">{queryResult.problem_math}</div>
+
+                  <div className="block-body">
+                    <div className="math-pane">
+                      <div className="math-label">Theorem Proven</div>
+                      <div className="latex-container">
+                        <BlockMath math={`${block.problem_math} = ${block.solution_math}`} />
+                      </div>
+
+                      <div className="energy-badge">
+                        <Zap size={14} fill="currentColor" />
+                        Energy: {block.energy.toFixed(5)}
+                      </div>
                     </div>
-                    <div>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>AST Parsed Math Vector</span>
-                      <div className="code-block">{queryResult.solution_math}</div>
-                    </div>
+
+                    {block.ast_chart ? (
+                      <div className="ast-pane">
+                        <div className="math-label" style={{ marginBottom: '0.5rem' }}>GCN Attention Mapping</div>
+                        <img
+                          src={`${SERVER_BASE}${block.ast_chart}`}
+                          alt="AST Chart"
+                          className="ast-image"
+                        />
+                      </div>
+                    ) : (
+                      <div className="ast-pane empty-ast">
+                        <span>Genesis / No AST Chart</span>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </>
+              ))
             )}
           </div>
-        )}
-
+        </section>
       </main>
     </div>
   );
