@@ -3,6 +3,7 @@ import sqlite3
 import threading
 import time
 import asyncio
+import importlib.util
 import yaml
 import json
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
@@ -27,6 +28,7 @@ from state_manager import SciOracleStateManager
 import sympy as sp
 
 app = FastAPI(title="SciOracle Math EBM Platform")
+MULTIPART_AVAILABLE = importlib.util.find_spec("multipart") is not None
 
 # CORS for frontend
 app.add_middleware(
@@ -333,62 +335,65 @@ def research_lineage(limit: int = 200):
         "size": len(rows),
     }
 
-@app.post("/api/analyze")
-async def analyze_document(file: UploadFile = File(...)):
-    """Parses a PDF, extracting text for EBM logic and saving figures."""
-    if not MODEL:
-        raise HTTPException(status_code=503, detail="Model not loaded.")
+if MULTIPART_AVAILABLE:
+    @app.post("/api/analyze")
+    async def analyze_document(file: UploadFile = File(...)):
+        """Parses a PDF, extracting text for EBM logic and saving figures."""
+        if not MODEL:
+            raise HTTPException(status_code=503, detail="Model not loaded.")
+            
+        contents = await file.read()
         
-    contents = await file.read()
-    
-    # Write to temp file for PyMuPDF
-    temp_path = f"target_{file.filename}"
-    with open(temp_path, "wb") as f:
-        f.write(contents)
+        # Write to temp file for PyMuPDF
+        temp_path = f"target_{file.filename}"
+        with open(temp_path, "wb") as f:
+            f.write(contents)
+            
+        extracted_text = []
+        extracted_images = []
         
-    extracted_text = []
-    extracted_images = []
-    
-    # Parse PDF using PyMuPDF (fitz)
-    try:
-        doc = fitz.open(temp_path)
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            text = page.get_text()
-            if text.strip():
-                extracted_text.append(text.replace("\n", " ").strip())
-                
-            # Extract images (Graphical Figure Database mapping)
-            images = page.get_images(full=True)
-            for img_index, img in enumerate(images):
-                xref = img[0]
-                base_image = doc.extract_image(xref)
-                image_bytes = base_image["image"]
-                image_ext = base_image["ext"]
-                image_name = f"figure_{file.filename}_p{page_num}_i{img_index}.{image_ext}"
-                image_path = os.path.join(FIGURES_DIR, image_name)
-                
-                with open(image_path, "wb") as img_file:
-                    img_file.write(image_bytes)
-                extracted_images.append(image_name)
-                
-    except Exception as e:
+        # Parse PDF using PyMuPDF (fitz)
+        try:
+            doc = fitz.open(temp_path)
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                text = page.get_text()
+                if text.strip():
+                    extracted_text.append(text.replace("\n", " ").strip())
+                    
+                # Extract images (Graphical Figure Database mapping)
+                images = page.get_images(full=True)
+                for img_index, img in enumerate(images):
+                    xref = img[0]
+                    base_image = doc.extract_image(xref)
+                    image_bytes = base_image["image"]
+                    image_ext = base_image["ext"]
+                    image_name = f"figure_{file.filename}_p{page_num}_i{img_index}.{image_ext}"
+                    image_path = os.path.join(FIGURES_DIR, image_name)
+                    
+                    with open(image_path, "wb") as img_file:
+                        img_file.write(image_bytes)
+                    extracted_images.append(image_name)
+                    
+        except Exception as e:
+            if os.path.exists(temp_path): os.remove(temp_path)
+            raise HTTPException(status_code=400, detail=str(e))
+            
         if os.path.exists(temp_path): os.remove(temp_path)
-        raise HTTPException(status_code=400, detail=str(e))
-        
-    if os.path.exists(temp_path): os.remove(temp_path)
 
-    # For simplicity, we just evaluate the first few sentences as "problems" conceptually
-    # Realistically, you would chunk this and send it through a proper LLM query agent
-    context_blob = " ".join(extracted_text)[:500] 
-    
-    return {
-        "filename": file.filename,
-        "characters_extracted": sum(len(t) for t in extracted_text),
-        "figures_extracted": len(extracted_images),
-        "figure_names": extracted_images,
-        "context_preview": context_blob
-    }
+        # For simplicity, we just evaluate the first few sentences as "problems" conceptually
+        # Realistically, you would chunk this and send it through a proper LLM query agent
+        context_blob = " ".join(extracted_text)[:500] 
+        
+        return {
+            "filename": file.filename,
+            "characters_extracted": sum(len(t) for t in extracted_text),
+            "figures_extracted": len(extracted_images),
+            "figure_names": extracted_images,
+            "context_preview": context_blob
+        }
+else:
+    print("python-multipart not installed; /api/analyze upload endpoint disabled.")
 
 # --- PoD Cryptocurrency Dashboard Endpoints ---
 
