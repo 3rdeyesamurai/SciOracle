@@ -16,6 +16,7 @@ from ..security import injection as injection_mod
 from ..security import triage as triage_mod
 from . import discrepancy, knowledge_graph, ledger
 from . import system1
+from . import taxonomy
 from .mathx import archive as math_archive
 
 
@@ -88,7 +89,8 @@ def _load_documents(org_id: str, matter_id: str) -> list[dict]:
 
 
 def analyse_matter(org_id: str, matter_id: str, *, doc_type: str = "commercial", actor: str = "system",
-                   use_lean: bool = False, use_wolfram: bool = False, persist: bool = True) -> dict:
+                   use_lean: bool = False, use_wolfram: bool = False, persist: bool = True,
+                   jurisdictions: list[str] | None = None) -> dict:
     """Stage 4-6: discrepancy detection, equation archiving, knowledge graph."""
     docs = _load_documents(org_id, matter_id)
     if not docs:
@@ -107,6 +109,9 @@ def analyse_matter(org_id: str, matter_id: str, *, doc_type: str = "commercial",
         if not doc["quarantined"]:
             findings += discrepancy.detect_ambiguity(doc["id"], doc["title"], doc["text"], doc["extraction"])
             findings += discrepancy.detect_omission(doc["id"], doc["title"], doc["text"], doc_type)
+            if jurisdictions:
+                findings += discrepancy.detect_regulatory(doc["id"], doc["title"], doc["text"],
+                                                          jurisdictions, taxonomy)
 
     findings += discrepancy.detect_cross_document([d for d in docs if not d["quarantined"]])
 
@@ -146,6 +151,7 @@ def analyse_matter(org_id: str, matter_id: str, *, doc_type: str = "commercial",
                 (json.dumps(result), matter_id, org_id))
         ledger.append(org_id, actor, "matter.analysed", {
             "matter_id": matter_id, "documents": len(docs), "findings": len(findings),
+            "jurisdictions": jurisdictions or [],
             "severity_counts": _severity_counts(findings),
             "equations_archived": sum(len(h["archived"]) for h in harvests),
             "graph": graph["stats"],

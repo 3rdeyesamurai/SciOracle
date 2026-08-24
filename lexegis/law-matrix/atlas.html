@@ -1,0 +1,892 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Semantic Law Matrix</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+:root {
+  --plane: #f7f7f4;
+  --surface: #fbfbf9;
+  --surface-2: #f1f1ed;
+  --ink: #12131a;
+  --ink-2: #53555f;
+  --ink-3: #8a8c94;
+  --hair: #e2e2dc;
+  --hair-2: #eeeee9;
+  --accent: #2a78d6;
+  --accent-wash: #e6effc;
+  --seq-0: #f1f1ed;
+  --seq-1: #cde2fb;
+  --seq-2: #86b6ef;
+  --seq-3: #2a78d6;
+  --seq-4: #104281;
+  --pos: #2a78d6;
+  --neg: #d03b3b;
+  --neutral: #dcdcd6;
+  --good: #0ca30c;
+  --warn: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --display: "Spectral", Georgia, "Times New Roman", serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --chart: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --plane: #0e0f13;
+    --surface: #15161b;
+    --surface-2: #1c1e25;
+    --ink: #f1f2f5;
+    --ink-2: #b7b9c2;
+    --ink-3: #83858d;
+    --hair: #262832;
+    --hair-2: #1e202a;
+    --accent: #3987e5;
+    --accent-wash: #17263c;
+    --seq-0: #1c1e25;
+    --seq-1: #184f95;
+    --seq-2: #256abf;
+    --seq-3: #3987e5;
+    --seq-4: #86b6ef;
+    --pos: #3987e5;
+    --neg: #e66767;
+    --neutral: #383a44;
+    --good: #0ca30c;
+    --warn: #fab219;
+    --serious: #ec835a;
+    --critical: #e66767;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --plane: #0e0f13;
+  --surface: #15161b;
+  --surface-2: #1c1e25;
+  --ink: #f1f2f5;
+  --ink-2: #b7b9c2;
+  --ink-3: #83858d;
+  --hair: #262832;
+  --hair-2: #1e202a;
+  --accent: #3987e5;
+  --accent-wash: #17263c;
+  --seq-0: #1c1e25;
+  --seq-1: #184f95;
+  --seq-2: #256abf;
+  --seq-3: #3987e5;
+  --seq-4: #86b6ef;
+  --pos: #3987e5;
+  --neg: #e66767;
+  --neutral: #383a44;
+  --good: #0ca30c;
+  --warn: #fab219;
+  --serious: #ec835a;
+  --critical: #e66767;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 clamp(1rem, 3.5vw, 2.25rem); }
+
+h1, h2, h3 { font-family: var(--display); font-weight: 600; line-height: 1.15; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(2rem, 4.6vw, 3.1rem); letter-spacing: -0.015em; }
+h2 { font-size: clamp(1.35rem, 2.6vw, 1.8rem); }
+h3 { font-size: 1.02rem; font-family: var(--body); font-weight: 600; }
+p { margin: 0 0 .8rem; max-width: 68ch; }
+a { color: var(--accent); }
+
+.eyebrow {
+  font-size: .68rem; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3);
+  font-weight: 600;
+}
+.lede { font-size: 1.05rem; color: var(--ink-2); max-width: 62ch; }
+.note { font-size: .84rem; color: var(--ink-3); max-width: 70ch; }
+.num { font-variant-numeric: tabular-nums; }
+
+header.plate { border-bottom: 1px solid var(--hair); background: var(--surface); }
+header .bar { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: .9rem 0; flex-wrap: wrap; }
+.mark { font-family: var(--display); font-weight: 600; font-size: 1.1rem; }
+.provenance { display: flex; gap: 1.2rem; flex-wrap: wrap; font-size: .78rem; color: var(--ink-3); }
+.provenance b { color: var(--ink-2); font-weight: 500; }
+
+section { padding: clamp(2rem, 4.5vw, 3.2rem) 0; border-top: 1px solid var(--hair); }
+section:first-of-type { border-top: none; }
+.section-head { margin-bottom: 1.4rem; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px;
+  background: var(--hair); border: 1px solid var(--hair); margin: 1.8rem 0 0; }
+.tile { background: var(--surface); padding: .85rem 1rem; }
+.tile .v { font-size: 1.85rem; font-family: var(--display); line-height: 1.05; display: block; }
+.tile .k { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+
+.panel { background: var(--surface); border: 1px solid var(--hair); border-radius: 3px; padding: 1rem 1.1rem; }
+.panel + .panel { margin-top: 1rem; }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 1.1rem; align-items: start; }
+.split.even { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 900px) { .split, .split.even { grid-template-columns: 1fr; } }
+
+.controls { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; margin-bottom: .8rem; }
+button, select {
+  font: inherit; font-size: .84rem; background: var(--surface-2); color: var(--ink);
+  border: 1px solid var(--hair); border-radius: 3px; padding: .32rem .7rem; cursor: pointer;
+}
+button:hover, select:hover { border-color: var(--accent); }
+button[aria-pressed="true"] { background: var(--accent-wash); border-color: var(--accent); color: var(--ink); font-weight: 500; }
+button:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+select { padding-right: 1.4rem; }
+label.inline { font-size: .78rem; color: var(--ink-3); display: inline-flex; align-items: center; gap: .35rem; }
+
+/* ---------------- heatmap ---------------- */
+.matrix-scroll { overflow-x: auto; background: var(--surface); }
+table.matrix { border-collapse: separate; border-spacing: 2px; font-family: var(--chart); font-size: 11px; }
+table.matrix th { font-weight: 500; color: var(--ink-2); font-size: 10.5px; padding: 0 .3rem; }
+table.matrix thead th { vertical-align: bottom; height: 108px; }
+table.matrix thead th span { display: inline-block; writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
+table.matrix tbody th {
+  text-align: left; position: sticky; left: 0; background: var(--surface); z-index: 1;
+  white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;
+  border-right: 1px solid var(--hair-2); cursor: pointer;
+}
+table.matrix tbody tr:hover th { color: var(--ink); }
+table.matrix tbody tr[aria-selected="true"] th { color: var(--accent); font-weight: 600; }
+td.cell { width: 22px; height: 22px; border-radius: 2px; cursor: pointer; }
+td.cell:hover { outline: 2px solid var(--ink); outline-offset: -1px; }
+td.rowend { font-variant-numeric: tabular-nums; color: var(--ink-3); padding-left: .4rem; font-size: 10.5px; }
+
+.legend { display: flex; align-items: center; gap: .5rem; font-size: .74rem; color: var(--ink-3); margin-top: .7rem; flex-wrap: wrap; }
+.legend .swatches { display: flex; gap: 2px; }
+.legend .sw { width: 26px; height: 12px; border-radius: 2px; }
+
+.tooltip {
+  position: fixed; pointer-events: none; z-index: 40; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--hair); border-radius: 3px; padding: .45rem .6rem; font-size: .78rem;
+  box-shadow: 0 4px 14px rgba(0,0,0,.12); max-width: 280px; opacity: 0; transition: opacity .1s ease;
+  font-family: var(--chart);
+}
+.tooltip strong { display: block; font-size: .82rem; margin-bottom: .1rem; }
+.tooltip .t-val { font-variant-numeric: tabular-nums; color: var(--ink-2); }
+
+/* ---------------- dossier ---------------- */
+.dossier h3 { margin-bottom: .2rem; }
+.dossier .family { font-size: .74rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: .15rem .6rem; font-size: .82rem; margin: .6rem 0; }
+.kv dt { color: var(--ink-3); }
+.kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+ul.plain { list-style: none; padding: 0; margin: .4rem 0 0; font-size: .82rem; color: var(--ink-2); }
+ul.plain li { padding: .18rem 0 .18rem .9rem; position: relative; }
+ul.plain li::before { content: ''; position: absolute; left: 0; top: .72em; width: 4px; height: 1px; background: var(--ink-3); }
+.verify { font-size: .8rem; color: var(--ink-2); border-left: 2px solid var(--warn); padding-left: .6rem; margin-top: .6rem; }
+.coverage-row { display: flex; gap: 2px; margin-top: .3rem; }
+.coverage-row div { flex: 1; height: 20px; border-radius: 2px; position: relative; }
+.coverage-row div span { position: absolute; bottom: -1.05rem; left: 50%; transform: translateX(-50%);
+  font-size: 9px; color: var(--ink-3); font-family: var(--chart); }
+
+/* ---------------- charts ---------------- */
+.chart { font-family: var(--chart); }
+.bars { display: flex; flex-direction: column; gap: 3px; margin-top: .3rem; }
+.bar-row { display: grid; grid-template-columns: 190px minmax(0, 1fr) 44px; gap: .5rem; align-items: center; font-size: 11.5px; }
+.bar-row .lab { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-row .lab a, .chip a { color: inherit; text-decoration: none; }
+.bar-row:hover .lab a, .chip a:hover { color: var(--accent); }
+.bar-row .lab a:focus-visible, .chip a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bar-track { display: block; background: var(--surface-2); height: 12px; border-radius: 2px; overflow: hidden; }
+.bar-fill { display: block; height: 100%; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--accent); }
+.bar-row .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.bar-row:hover .lab { color: var(--ink); }
+
+.diverge { display: flex; flex-direction: column; gap: 3px; }
+.dv-row { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: .5rem; align-items: center; font-size: 11.5px; }
+.dv-track { display: block; position: relative; height: 16px; }
+.dv-track::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--neutral); }
+.dv-bar { position: absolute; top: 2px; height: 12px; border-radius: 2px; }
+.dv-bar.pos { background: var(--pos); left: 50%; border-radius: 0 4px 4px 0; }
+.dv-bar.neg { background: var(--neg); right: 50%; border-radius: 4px 0 0 4px; }
+.dv-val { position: absolute; top: 0; font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+svg.map { width: 100%; height: 440px; display: block; }
+svg.map .dot { cursor: pointer; }
+svg.map text {
+  font-family: var(--chart); font-size: 10px; fill: var(--ink-3);
+  paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round;
+}
+svg.map text.selected { fill: var(--ink); font-weight: 600; }
+
+table.data { width: 100%; border-collapse: collapse; font-family: var(--chart); font-size: 12px; }
+table.data th { text-align: left; font-weight: 500; color: var(--ink-3); border-bottom: 1px solid var(--hair);
+  padding: .3rem .4rem; font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; }
+table.data td { padding: .3rem .4rem; border-bottom: 1px solid var(--hair-2); font-variant-numeric: tabular-nums; }
+table.data td.text { font-variant-numeric: normal; color: var(--ink-2); }
+details.table-view { margin-top: .8rem; }
+details.table-view summary { font-size: .78rem; color: var(--ink-3); cursor: pointer; }
+details.table-view[open] summary { margin-bottom: .5rem; }
+.scroll-y { max-height: 320px; overflow-y: auto; }
+
+.chips { display: flex; gap: .35rem; flex-wrap: wrap; }
+.chip { font-size: .72rem; border: 1px solid var(--hair); border-radius: 999px; padding: .1rem .55rem; color: var(--ink-2); }
+.chip.risk { border-color: var(--serious); color: var(--serious); }
+.chip.ok { border-color: var(--good); color: var(--good); }
+
+footer { border-top: 1px solid var(--hair); padding: 1.4rem 0 3rem; color: var(--ink-3); font-size: .82rem; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+
+<header class="plate">
+  <div class="wrap bar">
+    <span class="mark">Semantic Law Matrix</span>
+    <div class="provenance">
+      <span>computed in <b id="p-engine">Wolfram</b></span>
+      <span>generated <b id="p-date">—</b></span>
+      <span><b id="p-classes">32</b> classifications × <b>16</b> primitives × <b>12</b> forums</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="wrap">
+    <p class="eyebrow">Digital consumer law</p>
+    <h1>Every classification as a vector, so proximity is a measurement.</h1>
+    <p class="lede">
+      Thirty-two bodies of digital consumer law, each scored against sixteen normative primitives —
+      what the law actually demands, rather than what it is called. With the field as a matrix,
+      questions that were matters of opinion become computations: which regimes argue alike, what a
+      jurisdiction systematically over-weights, and where one set of terms cannot be lawful everywhere.
+    </p>
+    <div class="tiles" id="tiles"></div>
+    <p class="note" style="margin-top:1rem" id="disclaimer"></p>
+  </section>
+
+  <section class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Plate I · the matrix</p>
+      <h2>What each body of law demands</h2>
+      <p class="note">
+        Cell intensity is the weight of a normative primitive in a classification: absent, peripheral,
+        substantial, defining. Select a row for its dossier — the instruments behind the score, the
+        nearest classifications in normative space, and what to re-check before relying on it.
+      </p>
+    </div>
+
+    <div class="split">
+      <div class="panel">
+        <div class="controls">
+          <button data-view="weights" aria-pressed="true">Normative weight</button>
+          <button data-view="coverage" aria-pressed="false">Forum coverage</button>
+          <label class="inline">Sort
+            <select id="sort">
+              <option value="family">by family</option>
+              <option value="density">by density</option>
+              <option value="cluster">by cluster</option>
+              <option value="divergence">by divergence risk</option>
+            </select>
+          </label>
+        </div>
+        <div class="matrix-scroll"><div id="matrix"></div></div>
+        <div class="legend" id="legend"></div>
+        <details class="table-view">
+          <summary>Show the same data as a table</summary>
+          <div class="scroll-y" id="matrix-table"></div>
+        </details>
+      </div>
+
+      <div class="panel dossier" id="dossier"></div>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Plate II · the map</p>
+      <h2>Which bodies of law argue alike</h2>
+      <p class="note">
+        Each classification placed by the first two singular vectors of the normative matrix, so
+        distance on this plate approximates difference in what the law demands. Point size is
+        regulatory density — the total normative load the classification carries.
+      </p>
+    </div>
+    <div class="split even">
+      <div class="panel">
+        <svg class="map" id="map" role="img" aria-label="Two-dimensional map of classifications by normative similarity"></svg>
+        <p class="note" id="map-note" style="margin:.4rem 0 0"></p>
+      </div>
+      <div class="panel">
+        <h3>Nearest neighbours</h3>
+        <p class="note" style="margin-bottom:.6rem">
+          Cosine similarity over the primitive vectors. Neighbours are what a drafter should read
+          together: the same normative machinery, a different label.
+        </p>
+        <div id="neighbours"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Plate III · the forums</p>
+      <h2>What each jurisdiction over-weights</h2>
+      <p class="note">
+        Coverage summed over classifications says how much law a forum has; it says nothing about its
+        character. Dividing by total coverage and standardising each primitive across forums gives
+        emphasis: what this regime leans on relative to the consensus of the twelve.
+      </p>
+    </div>
+    <div class="split even">
+      <div class="panel">
+        <div class="controls">
+          <label class="inline">Forum <select id="jurisdiction"></select></label>
+        </div>
+        <div class="chart" id="emphasis"></div>
+        <div class="legend">
+          <span><span class="sw" style="display:inline-block;width:12px;height:12px;background:var(--pos);vertical-align:-2px"></span>
+            above consensus</span>
+          <span><span class="sw" style="display:inline-block;width:12px;height:12px;background:var(--neg);vertical-align:-2px"></span>
+            below consensus</span>
+          <span>units: standard deviations across the twelve forums</span>
+        </div>
+        <details class="table-view">
+          <summary>Show emphasis as a table</summary>
+          <div id="emphasis-table"></div>
+        </details>
+      </div>
+      <div class="panel">
+        <h3 id="gaps-title">Thinnest coverage</h3>
+        <p class="note" style="margin-bottom:.5rem">
+          Dense classifications this forum occupies only partially or not at all — where a supplier
+          faces little local duty, and a consumer little local protection.
+        </p>
+        <div id="gaps"></div>
+        <h3 style="margin-top:1.2rem">Distance from another forum</h3>
+        <div class="controls" style="margin:.5rem 0">
+          <label class="inline">compare with <select id="compare"></select></label>
+        </div>
+        <div id="comparison"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Plate IV · exposure</p>
+      <h2>Where one set of terms cannot satisfy everyone</h2>
+      <p class="note">
+        Divergence risk is the spread of coverage across the twelve forums, weighted by the normative
+        load of the classification. High-risk rows are where a single product design is most likely to
+        be lawful in one place and actionable in another — the questions worth paying counsel to answer
+        forum by forum.
+      </p>
+    </div>
+    <div class="panel">
+      <div class="chart" id="divergence"></div>
+      <details class="table-view">
+        <summary>Show divergence as a table</summary>
+        <div class="scroll-y" id="divergence-table"></div>
+      </details>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Method</p>
+      <h2>How the numbers were made</h2>
+    </div>
+    <div class="split even">
+      <div class="panel">
+        <h3>Computation</h3>
+        <p class="note">
+          The classification vectors and the coverage tensor are scored per row against the instruments
+          cited in the dossier. Wolfram Language computes the cosine geometry, the agglomerative
+          clustering, the singular-value embedding, the primitive entropies and correlations, and the
+          jurisdiction statistics. A second implementation re-derives every shared quantity and the two
+          are compared before anything is published, so a transcription slip fails loudly instead of
+          shipping.
+        </p>
+        <p class="note">
+          One statistic was corrected during the build: cosine similarity over raw exposure sums put
+          every pair of forums between 0.997 and 1.000, because each forum sums the same thirty-two
+          rows and so points the same way. Emphasis — exposure per unit of coverage, standardised per
+          primitive — is what actually discriminates, and it is what Plate III shows.
+        </p>
+      </div>
+      <div class="panel">
+        <h3>What this is not</h3>
+        <p class="note" id="method-disclaimer"></p>
+        <p class="note">
+          Scores are an analyst scaffold, not a source of law. Each dossier carries a
+          <em>verify</em> note naming what to re-check — a phase-in date, a designation, a national
+          transposition — because those are the details that decide cases, and they move faster than
+          any matrix.
+        </p>
+        <h3 style="margin-top:1rem">Reading the scales</h3>
+        <dl class="kv" id="scales"></dl>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap"><footer>
+    A research instrument for comparative analysis. Not legal advice; no lawyer-client relationship.
+    Instruments named in the dossiers are the sources to read — this page is an index to them, not a
+    substitute for them.
+  </footer></div>
+</main>
+
+<div class="tooltip" id="tooltip" role="status" aria-live="polite"></div>
+
+<script id="matrix-data" type="application/json">{"generated":"2026-08-24","engine":"Wolfram Language 15.0.1 for Linux x86 (64-bit)","disclaimer":"Analyst scaffold current to 2026-08. A research instrument, not legal advice; re-check each row against primary sources before relying on it.","scales":{"weights":{"0":"absent","1":"peripheral","2":"substantial","3":"defining"},"coverage":{"0":"none","1":"partial or sectoral","2":"substantial","3":"comprehensive"}},"primitiveIds":["consent","transparency","fairness","exit","redress","liability","enforcement","extraterritorial","vulnerability","minimisation","interoperability","auditability","timeliness","security","prohibition","exante"],"jurisdictionIds":["EU","UK","US_FED","US_CA","CAN","BR","IN","CN","JP","KR","AU","SG"],"primitives":[{"id":"consent","label":"Consent","gloss":"A freely given, specific act of permission is the gate to the conduct.","reach":32,"entropy":0.784},{"id":"transparency","label":"Transparency","gloss":"Mandated disclosure of terms, identity, ranking, or provenance.","reach":79,"entropy":0.992},{"id":"fairness","label":"Substantive fairness","gloss":"The balance of the bargain is policed, not merely its disclosure.","reach":66,"entropy":0.985},{"id":"exit","label":"Exit and withdrawal","gloss":"The consumer may leave: cancel, withdraw, unsubscribe, port out.","reach":37,"entropy":0.878},{"id":"redress","label":"Redress","gloss":"A remedy runs to the individual: repair, refund, damages, restitution.","reach":69,"entropy":0.985},{"id":"liability","label":"Liability allocation","gloss":"The rule fixes who bears loss when the digital thing fails.","reach":60,"entropy":0.977},{"id":"enforcement","label":"Enforcement severity","gloss":"Turnover-based fines, injunctions, or personal liability attach.","reach":79,"entropy":0.992},{"id":"extraterritorial","label":"Extraterritorial reach","gloss":"The rule binds suppliers established outside the forum.","reach":62,"entropy":0.975},{"id":"vulnerability","label":"Vulnerable users","gloss":"Heightened duties toward minors, the elderly, the distressed.","reach":52,"entropy":0.935},{"id":"minimisation","label":"Data minimisation","gloss":"Purpose limitation and necessity constrain collection.","reach":29,"entropy":0.771},{"id":"interoperability","label":"Interoperability","gloss":"Portability, open interfaces, switching without loss.","reach":20,"entropy":0.689},{"id":"auditability","label":"Auditability","gloss":"Records, reporting, audits, or researcher access are compelled.","reach":63,"entropy":0.971},{"id":"timeliness","label":"Timeliness","gloss":"Hard deadlines govern acting, responding, or notifying.","reach":65,"entropy":0.978},{"id":"security","label":"Security duty","gloss":"A technical protection standard is imposed on the supplier.","reach":30,"entropy":0.788},{"id":"prohibition","label":"Per se prohibition","gloss":"Conduct is banned outright, no balancing available.","reach":49,"entropy":0.922},{"id":"exante","label":"Ex ante structure","gloss":"Compliance is designed in before launch, not litigated after.","reach":52,"entropy":0.911}],"jurisdictions":[{"id":"EU","label":"European Union","family":"civil / regulation-led","coverageScore":95,"signature":{"over":{"interoperability":1.79,"exante":1.34,"security":1.04},"under":{"vulnerability":-1.44,"prohibition":-1.19,"enforcement":-0.93}},"gaps":[]},{"id":"UK","label":"United Kingdom","family":"common / regulator-led","coverageScore":85,"signature":{"over":{"fairness":0.61,"exit":0.59,"timeliness":0.58},"under":{"vulnerability":-1.14,"enforcement":-0.44,"extraterritorial":-0.34}},"gaps":[]},{"id":"US_FED","label":"United States (federal)","family":"common / enforcement-led","coverageScore":44,"signature":{"over":{"prohibition":2.26,"enforcement":2.22,"vulnerability":2.02},"under":{"exit":-2.24,"security":-1.59,"fairness":-1.55}},"gaps":[{"class":"data_protection","label":"General data protection","coverage":1,"density":36},{"class":"gatekeeper_obligations","label":"Gatekeeper and digital-markets duties","coverage":1,"density":35},{"class":"crypto_consumer","label":"Crypto-asset consumer protection","coverage":1,"density":34},{"class":"online_safety_illegal","label":"Illegal and harmful content duties","coverage":1,"density":31},{"class":"automated_decisions","label":"Automated decision-making and consumer AI","coverage":1,"density":30},{"class":"content_moderation_rights","label":"User rights in content moderation","coverage":0,"density":30}]},{"id":"US_CA","label":"California","family":"common / statute-led","coverageScore":55,"signature":{"over":{"consent":2.39,"transparency":2.26,"minimisation":1.85},"under":{"timeliness":-2.13,"liability":-2.09,"extraterritorial":-2.04}},"gaps":[{"class":"gatekeeper_obligations","label":"Gatekeeper and digital-markets duties","coverage":0,"density":35},{"class":"crypto_consumer","label":"Crypto-asset consumer protection","coverage":1,"density":34},{"class":"online_safety_illegal","label":"Illegal and harmful content duties","coverage":1,"density":31},{"class":"content_moderation_rights","label":"User rights in content moderation","coverage":1,"density":30},{"class":"platform_transparency","label":"Marketplace and ranking transparency","coverage":1,"density":27},{"class":"intermediary_liability","label":"Intermediary liability and notice-and-action","coverage":1,"density":25}]},{"id":"CAN","label":"Canada","family":"mixed","coverageScore":50,"signature":{"over":{"exit":1.47,"redress":1.45,"interoperability":1.34},"under":{"exante":-1.86,"auditability":-1.84,"minimisation":-1.56}},"gaps":[{"class":"minors_protection","label":"Children, minors and age assurance","coverage":1,"density":37},{"class":"gatekeeper_obligations","label":"Gatekeeper and digital-markets duties","coverage":1,"density":35},{"class":"dark_patterns","label":"Manipulative interface design","coverage":1,"density":31},{"class":"automated_decisions","label":"Automated decision-making and consumer AI","coverage":1,"density":30},{"class":"content_moderation_rights","label":"User rights in content moderation","coverage":1,"density":30},{"class":"profiling_adtech","label":"Profiling and behavioural advertising","coverage":1,"density":29}]},{"id":"BR","label":"Brazil","family":"civil / code-led","coverageScore":62,"signature":{"over":{"redress":1.12,"fairness":1.02,"exit":0.92},"under":{"exante":-1.6,"interoperability":-1.56,"prohibition":-1.44}},"gaps":[{"class":"gatekeeper_obligations","label":"Gatekeeper and digital-markets duties","coverage":1,"density":35},{"class":"dark_patterns","label":"Manipulative interface design","coverage":1,"density":31},{"class":"subscriptions_autorenewal","label":"Auto-renewal and cancellation","coverage":1,"density":25},{"class":"iot_security","label":"Consumer IoT and product cybersecurity","coverage":1,"density":25},{"class":"updates_repair","label":"Update duty, repair and obsolescence","coverage":1,"density":24},{"class":"accessibility","label":"Accessibility of digital services","coverage":1,"density":24}]},{"id":"IN","label":"India","family":"common / statute-led","coverageScore":53,"signature":{"over":{"transparency":0.88,"timeliness":0.86,"auditability":0.45},"under":{"prohibition":-0.72,"liability":-0.48,"enforcement":-0.47}},"gaps":[{"class":"gatekeeper_obligations","label":"Gatekeeper and digital-markets duties","coverage":1,"density":35},{"class":"crypto_consumer","label":"Crypto-asset consumer protection","coverage":1,"density":34},{"class":"dark_patterns","label":"Manipulative interface design","coverage":1,"density":31},{"class":"automated_decisions","label":"Automated decision-making and consumer AI","coverage":1,"density":30},{"class":"eprivacy_tracking","label":"Cookies, trackers and communications confidentiality","coverage":1,"density":25},{"class":"subscriptions_autorenewal","label":"Auto-renewal and cancellation","coverage":1,"density":25}]},{"id":"CN","label":"China","family":"civil / administrative","coverageScore":65,"signature":{"over":{"auditability":1.22,"extraterritorial":1.06,"liability":0.83},"under":{"transparency":-1.55,"vulnerability":-1.34,"prohibition":-0.58}},"gaps":[{"class":"content_moderation_rights","label":"User rights in content moderation","coverage":1,"density":30},{"class":"subscriptions_autorenewal","label":"Auto-renewal and cancellation","coverage":1,"density":25},{"class":"portability_interop","label":"Data portability and interoperability","coverage":1,"density":24},{"class":"updates_repair","label":"Update duty, repair and obsolescence","coverage":1,"density":24},{"class":"accessibility","label":"Accessibility of digital services","coverage":1,"density":24},{"class":"cross_border_enforcement","label":"Cross-border enforcement and cooperation","coverage":1,"density":22}]},{"id":"JP","label":"Japan","family":"civil","coverageScore":55,"signature":{"over":{"auditability":0.82,"liability":0.64,"extraterritorial":0.63},"under":{"timeliness":-0.91,"exit":-0.86,"redress":-0.5}},"gaps":[{"class":"dark_patterns","label":"Manipulative interface design","coverage":1,"density":31},{"class":"automated_decisions","label":"Automated decision-making and consumer AI","coverage":1,"density":30},{"class":"content_moderation_rights","label":"User rights in content moderation","coverage":1,"density":30},{"class":"subscriptions_autorenewal","label":"Auto-renewal and cancellation","coverage":1,"density":25},{"class":"iot_security","label":"Consumer IoT and product cybersecurity","coverage":1,"density":25},{"class":"portability_interop","label":"Data portability and interoperability","coverage":1,"density":24}]},{"id":"KR","label":"South Korea","family":"civil","coverageScore":66,"signature":{"over":{"auditability":0.92,"exit":0.77,"minimisation":0.7},"under":{"liability":-1.01,"interoperability":-0.93,"redress":-0.87}},"gaps":[{"class":"updates_repair","label":"Update duty, repair and obsolescence","coverage":1,"density":24},{"class":"goods_digital_elements","label":"Goods with digital elements","coverage":1,"density":22},{"class":"cross_border_enforcement","label":"Cross-border enforcement and cooperation","coverage":1,"density":22},{"class":"personalised_pricing","label":"Personalised and algorithmic pricing","coverage":1,"density":21},{"class":"digital_content_conformity","label":"Conformity of digital content and services","coverage":1,"density":21}]},{"id":"AU","label":"Australia","family":"common / regulator-led","coverageScore":61,"signature":{"over":{"liability":1.81,"redress":1.8,"enforcement":1.53},"under":{"consent":-1.86,"minimisation":-1.82,"auditability":-1.63}},"gaps":[{"class":"gatekeeper_obligations","label":"Gatekeeper and digital-markets duties","coverage":1,"density":35},{"class":"automated_decisions","label":"Automated decision-making and consumer AI","coverage":1,"density":30},{"class":"content_moderation_rights","label":"User rights in content moderation","coverage":1,"density":30},{"class":"profiling_adtech","label":"Profiling and behavioural advertising","coverage":1,"density":29},{"class":"eprivacy_tracking","label":"Cookies, trackers and communications confidentiality","coverage":1,"density":25},{"class":"iot_security","label":"Consumer IoT and product cybersecurity","coverage":1,"density":25}]},{"id":"SG","label":"Singapore","family":"common","coverageScore":52,"signature":{"over":{"extraterritorial":1.58,"security":1.57,"prohibition":1.0},"under":{"fairness":-2.21,"timeliness":-0.73,"interoperability":-0.58}},"gaps":[{"class":"gatekeeper_obligations","label":"Gatekeeper and digital-markets duties","coverage":1,"density":35},{"class":"dark_patterns","label":"Manipulative interface design","coverage":1,"density":31},{"class":"automated_decisions","label":"Automated decision-making and consumer AI","coverage":1,"density":30},{"class":"content_moderation_rights","label":"User rights in content moderation","coverage":1,"density":30},{"class":"platform_transparency","label":"Marketplace and ranking transparency","coverage":1,"density":27},{"class":"subscriptions_autorenewal","label":"Auto-renewal and cancellation","coverage":1,"density":25}]}],"classes":[{"id":"data_protection","label":"General data protection","family":"Data and privacy","weights":{"consent":3,"transparency":3,"fairness":2,"exit":1,"redress":2,"liability":2,"enforcement":3,"extraterritorial":3,"vulnerability":2,"minimisation":3,"interoperability":2,"auditability":3,"timeliness":2,"security":2,"prohibition":1,"exante":2},"coverage":{"EU":3,"UK":3,"US_FED":1,"US_CA":3,"CAN":2,"BR":3,"IN":3,"CN":3,"JP":3,"KR":3,"AU":2,"SG":3},"instruments":["EU GDPR 2016/679","UK GDPR + DPA 2018","CCPA/CPRA","LGPD (BR)","DPDP Act 2023 (IN)","PIPL (CN)","APPI (JP)"],"verify":"Confirm lawful-basis architecture and the current adequacy/transfer position for each forum.","density":36,"cluster":1,"embedding":[0.049,0.289],"neighbours":[{"class":"payments_chargebacks","label":"Electronic payments and unauthorised transactions","similarity":0.944},{"class":"minors_protection","label":"Children, minors and age assurance","similarity":0.942},{"class":"automated_decisions","label":"Automated decision-making and consumer AI","similarity":0.931},{"class":"profiling_adtech","label":"Profiling and behavioural advertising","similarity":0.926}]},{"id":"eprivacy_tracking","label":"Cookies, trackers and communications confidentiality","family":"Data and privacy","weights":{"consent":3,"transparency":3,"fairness":1,"exit":1,"redress":1,"liability":1,"enforcement":2,"extraterritorial":2,"vulnerability":1,"minimisation":3,"interoperability":0,"auditability":2,"timeliness":1,"security":1,"prohibition":2,"exante":1},"coverage":{"EU":3,"UK":3,"US_FED":1,"US_CA":2,"CAN":1,"BR":2,"IN":1,"CN":2,"JP":2,"KR":2,"AU":1,"SG":2},"instruments":["ePrivacy Directive 2002/58 art.5(3)","PECR (UK)","CIPA-based wiretap claims (US_CA)"],"verify":"ePrivacy remains a directive with divergent national consent rules; check the member-state rule, not the directive alone.","density":25,"cluster":1,"embedding":[0.34,0.316],"neighbours":[{"class":"profiling_adtech","label":"Profiling and behavioural advertising","similarity":0.955},{"class":"data_protection","label":"General data protection","similarity":0.925},{"class":"minors_protection","label":"Children, minors and age assurance","similarity":0.924},{"class":"dark_patterns","label":"Manipulative interface design","similarity":0.91}]},{"id":"profiling_adtech","label":"Profiling and behavioural advertising","family":"Data and privacy","weights":{"consent":3,"transparency":3,"fairness":2,"exit":1,"redress":1,"liability":1,"enforcement":2,"extraterritorial":2,"vulnerability":3,"minimisation":3,"interoperability":0,"auditability":2,"timeliness":1,"security":1,"prohibition":2,"exante":2},"coverage":{"EU":3,"UK":2,"US_FED":1,"US_CA":3,"CAN":1,"BR":2,"IN":2,"CN":2,"JP":2,"KR":2,"AU":1,"SG":2},"instruments":["GDPR arts.21-22","DSA arts.26,28 (ad transparency, minors)","CPRA opt-out of sharing","FTC Act s.5 unfairness"],"verify":"Sensitive-category and minors advertising bans differ sharply; verify per platform tier.","density":29,"cluster":1,"embedding":[0.344,0.312],"neighbours":[{"class":"minors_protection","label":"Children, minors and age assurance","similarity":0.957},{"class":"eprivacy_tracking","label":"Cookies, trackers and communications confidentiality","similarity":0.955},{"class":"dark_patterns","label":"Manipulative interface design","similarity":0.947},{"class":"automated_decisions","label":"Automated decision-making and consumer AI","similarity":0.933}]},{"id":"portability_interop","label":"Data portability and interoperability","family":"Data and privacy","weights":{"consent":1,"transparency":2,"fairness":1,"exit":2,"redress":1,"liability":1,"enforcement":1,"extraterritorial":2,"vulnerability":0,"minimisation":1,"interoperability":3,"auditability":2,"timeliness":2,"security":2,"prohibition":0,"exante":3},"coverage":{"EU":3,"UK":2,"US_FED":1,"US_CA":2,"CAN":2,"BR":2,"IN":2,"CN":1,"JP":1,"KR":2,"AU":1,"SG":1},"instruments":["GDPR art.20","EU Data Act 2023/2854","DMA arts.6(9),7","CPRA s.1798.130"],"verify":"Data Act obligations phase in over time; confirm the applicable date and product scope.","density":24,"cluster":6,"embedding":[-0.308,0.303],"neighbours":[{"class":"gatekeeper_obligations","label":"Gatekeeper and digital-markets duties","similarity":0.872},{"class":"updates_repair","label":"Update duty, repair and obsolescence","similarity":0.857},{"class":"payments_chargebacks","label":"Electronic payments and unauthorised transactions","similarity":0.852},{"class":"data_protection","label":"General data protection","similarity":0.846}]},{"id":"automated_decisions","label":"Automated decision-making and consumer AI","family":"Data and privacy","weights":{"consent":2,"transparency":3,"fairness":3,"exit":1,"redress":2,"liability":2,"enforcement":2,"extraterritorial":2,"vulnerability":2,"minimisation":2,"interoperability":0,"auditability":3,"timeliness":1,"security":1,"prohibition":1,"exante":3},"coverage":{"EU":3,"UK":2,"US_FED":1,"US_CA":2,"CAN":1,"BR":2,"IN":1,"CN":2,"JP":1,"KR":2,"AU":1,"SG":1},"instruments":["GDPR art.22","EU AI Act 2024/1689","Colorado AI Act","CPRA ADMT regulations"],"verify":"AI Act duties phase in by risk tier; check which obligations are in force on the relevant date.","density":30,"cluster":1,"embedding":[0.087,0.221],"neighbours":[{"class":"minors_protection","label":"Children, minors and age assurance","similarity":0.936},{"class":"profiling_adtech","label":"Profiling and behavioural advertising","similarity":0.933},{"class":"data_protection","label":"General data protection","similarity":0.931},{"class":"personalised_pricing","label":"Personalised and algorithmic pricing","similarity":0.928}]},{"id":"unfair_terms","label":"Unfair contract terms","family":"Contract and commerce","weights":{"consent":1,"transparency":2,"fairness":3,"exit":2,"redress":3,"liability":2,"enforcement":2,"extraterritorial":1,"vulnerability":2,"minimisation":0,"interoperability":0,"auditability":0,"timeliness":1,"security":0,"prohibition":2,"exante":0},"coverage":{"EU":3,"UK":3,"US_FED":1,"US_CA":2,"CAN":3,"BR":3,"IN":2,"CN":2,"JP":2,"KR":2,"AU":3,"SG":2},"instruments":["Unfair Terms Directive 93/13","Consumer Rights Act 2015 pt.2 (UK)","CDC arts.51-54 (BR)","ACL unfair contract terms"],"verify":"Australia moved to penalties for unfair terms in 2023; confirm the penalty exposure, not just voidness.","density":21,"cluster":2,"embedding":[0.203,-0.369],"neighbours":[{"class":"unfair_commercial_practices","label":"Misleading and aggressive practices","similarity":0.943},{"class":"credit_bnpl","label":"Digital credit and buy-now-pay-later","similarity":0.895},{"class":"distance_selling","label":"Distance selling and pre-contractual information","similarity":0.872},{"class":"withdrawal_rights","label":"Cooling-off and right of withdrawal","similarity":0.872}]},{"id":"distance_selling","label":"Distance selling and pre-contractual information","family":"Contract and commerce","weights":{"consent":1,"transparency":3,"fairness":2,"exit":2,"redress":2,"liability":1,"enforcement":2,"extraterritorial":1,"vulnerability":1,"minimisation":0,"interoperability":0,"auditability":1,"timeliness":3,"security":0,"prohibition":1,"exante":0},"coverage":{"EU":3,"UK":3,"US_FED":1,"US_CA":1,"CAN":2,"BR":3,"IN":2,"CN":3,"JP":2,"KR":3,"AU":2,"SG":2},"instruments":["Consumer Rights Directive 2011/83","CCRs 2013 (UK)","Act on Specified Commercial Transactions (JP)","E-Commerce Rules 2020 (IN)"],"verify":"Information duties are itemised and jurisdiction-specific; compare item lists rather than assuming equivalence.","density":20,"cluster":1,"embedding":[0.132,-0.33],"neighbours":[{"class":"withdrawal_rights","label":"Cooling-off and right of withdrawal","similarity":0.975},{"class":"subscriptions_autorenewal","label":"Auto-renewal and cancellation","similarity":0.963},{"class":"credit_bnpl","label":"Digital credit and buy-now-pay-later","similarity":0.913},{"class":"redress_odr","label":"Collective redress and dispute resolution","similarity":0.894}]},{"id":"withdrawal_rights","label":"Cooling-off and right of withdrawal","family":"Contract and commerce","weights":{"consent":1,"transparency":2,"fairness":2,"exit":3,"redress":2,"liability":1,"enforcement":2,"extraterritorial":1,"vulnerability":1,"minimisation":0,"interoperability":0,"auditability":1,"timeliness":3,"security":0,"prohibition":1,"exante":0},"coverage":{"EU":3,"UK":3,"US_FED":0,"US_CA":1,"CAN":2,"BR":3,"IN":2,"CN":3,"JP":2,"KR":3,"AU":1,"SG":1},"instruments":["CRD arts.9-16","CDC art.49 (BR, 7 days)","E-Commerce Law arts.49-50 (CN)"],"verify":"Digital-content withdrawal is lost on performance with consent; verify how that waiver is captured.","density":20,"cluster":1,"embedding":[0.132,-0.364],"neighbours":[{"class":"distance_selling","label":"Distance selling and pre-contractual information","similarity":0.975},{"class":"subscriptions_autorenewal","label":"Auto-renewal and cancellation","similarity":0.963},{"class":"credit_bnpl","label":"Digital credit and buy-now-pay-later","similarity":0.895},{"class":"unfair_terms","label":"Unfair contract terms","similarity":0.872}]},{"id":"subscriptions_autorenewal","label":"Auto-renewal and cancellation","family":"Contract and commerce","weights":{"consent":2,"transparency":3,"fairness":2,"exit":3,"redress":2,"liability":1,"enforcement":3,"extraterritorial":1,"vulnerability":1,"minimisation":0,"interoperability":0,"auditability":1,"timeliness":3,"security":0,"prohibition":2,"exante":1},"coverage":{"EU":3,"UK":3,"US_FED":2,"US_CA":3,"CAN":1,"BR":1,"IN":1,"CN":1,"JP":1,"KR":2,"AU":2,"SG":1},"instruments":["FTC Negative Option / click-to-cancel rule","ROSCA (US)","CA Automatic Renewal Law","Omnibus Directive 2019/2161","DMCC Act 2024 pt.4 (UK)"],"verify":"The FTC click-to-cancel rule has been litigated; confirm its status and effective date before relying on it.","density":25,"cluster":1,"embedding":[0.205,-0.231],"neighbours":[{"class":"distance_selling","label":"Distance selling and pre-contractual information","similarity":0.963},{"class":"withdrawal_rights","label":"Cooling-off and right of withdrawal","similarity":0.963},{"class":"credit_bnpl","label":"Digital credit and buy-now-pay-later","similarity":0.915},{"class":"direct_marketing_spam","label":"Unsolicited marketing and spam","similarity":0.897}]},{"id":"pricing_transparency","label":"Price transparency and drip pricing","family":"Contract and commerce","weights":{"consent":0,"transparency":3,"fairness":2,"exit":0,"redress":2,"liability":1,"enforcement":3,"extraterritorial":1,"vulnerability":1,"minimisation":0,"interoperability":0,"auditability":1,"timeliness":2,"security":0,"prohibition":2,"exante":1},"coverage":{"EU":3,"UK":3,"US_FED":2,"US_CA":2,"CAN":2,"BR":2,"IN":2,"CN":2,"JP":2,"KR":2,"AU":3,"SG":2},"instruments":["Price Indication Directive 98/6 + Omnibus","FTC Rule on Unfair or Deceptive Fees","DMCC Act 2024 (UK drip pricing)","ACL component pricing"],"verify":"Junk-fee rules differ on whether taxes and shipping enter the headline price.","density":19,"cluster":2,"embedding":[0.062,-0.194],"neighbours":[{"class":"fake_reviews_influencers","label":"Fake reviews and undisclosed endorsements","similarity":0.946},{"class":"unfair_commercial_practices","label":"Misleading and aggressive practices","similarity":0.914},{"class":"credit_bnpl","label":"Digital credit and buy-now-pay-later","similarity":0.907},{"class":"distance_selling","label":"Distance selling and pre-contractual information","similarity":0.886}]},{"id":"personalised_pricing","label":"Personalised and algorithmic pricing","family":"Contract and commerce","weights":{"consent":1,"transparency":3,"fairness":3,"exit":0,"redress":1,"liability":1,"enforcement":2,"extraterritorial":1,"vulnerability":2,"minimisation":2,"interoperability":0,"auditability":2,"timeliness":1,"security":0,"prohibition":1,"exante":1},"coverage":{"EU":2,"UK":2,"US_FED":0,"US_CA":1,"CAN":0,"BR":1,"IN":1,"CN":1,"JP":1,"KR":1,"AU":1,"SG":0},"instruments":["CRD art.6(1)(ea) (personalised price disclosure)","UCPD guidance on personalisation"],"verify":"Thin and mostly disclosure-based; surveillance-pricing enforcement is developing, so re-check activity.","density":21,"cluster":1,"embedding":[0.255,0.108],"neighbours":[{"class":"automated_decisions","label":"Automated decision-making and consumer AI","similarity":0.928},{"class":"profiling_adtech","label":"Profiling and behavioural advertising","similarity":0.91},{"class":"dark_patterns","label":"Manipulative interface design","similarity":0.908},{"class":"credit_bnpl","label":"Digital credit and buy-now-pay-later","similarity":0.884}]},{"id":"digital_content_conformity","label":"Conformity of digital content and services","family":"Digital product quality","weights":{"consent":0,"transparency":2,"fairness":2,"exit":2,"redress":3,"liability":3,"enforcement":2,"extraterritorial":1,"vulnerability":1,"minimisation":0,"interoperability":1,"auditability":1,"timeliness":2,"security":1,"prohibition":0,"exante":0},"coverage":{"EU":3,"UK":3,"US_FED":0,"US_CA":1,"CAN":1,"BR":2,"IN":1,"CN":2,"JP":1,"KR":1,"AU":2,"SG":1},"instruments":["Digital Content Directive 2019/770","CRA 2015 pt.1 ch.3 (UK)","ACL consumer guarantees"],"verify":"Objective conformity plus the update duty is an EU/UK construct; elsewhere it is general warranty law.","density":21,"cluster":4,"embedding":[-0.204,-0.341],"neighbours":[{"class":"goods_digital_elements","label":"Goods with digital elements","similarity":0.967},{"class":"product_liability_digital","label":"Liability for defective digital products","similarity":0.871},{"class":"distance_selling","label":"Distance selling and pre-contractual information","similarity":0.868},{"class":"withdrawal_rights","label":"Cooling-off and right of withdrawal","similarity":0.868}]},{"id":"goods_digital_elements","label":"Goods with digital elements","family":"Digital product quality","weights":{"consent":0,"transparency":2,"fairness":2,"exit":2,"redress":3,"liability":3,"enforcement":2,"extraterritorial":1,"vulnerability":0,"minimisation":0,"interoperability":1,"auditability":1,"timeliness":2,"security":2,"prohibition":0,"exante":1},"coverage":{"EU":3,"UK":2,"US_FED":0,"US_CA":1,"CAN":1,"BR":1,"IN":1,"CN":2,"JP":1,"KR":1,"AU":2,"SG":1},"instruments":["Sale of Goods Directive 2019/771","Cyber Resilience Act 2024/2847"],"verify":"The CRA's obligations are phased; confirm which apply on the relevant date.","density":22,"cluster":4,"embedding":[-0.334,-0.227],"neighbours":[{"class":"digital_content_conformity","label":"Conformity of digital content and services","similarity":0.967},{"class":"updates_repair","label":"Update duty, repair and obsolescence","similarity":0.917},{"class":"product_liability_digital","label":"Liability for defective digital products","similarity":0.887},{"class":"payments_chargebacks","label":"Electronic payments and unauthorised transactions","similarity":0.886}]},{"id":"updates_repair","label":"Update duty, repair and obsolescence","family":"Digital product quality","weights":{"consent":0,"transparency":2,"fairness":2,"exit":1,"redress":2,"liability":2,"enforcement":2,"extraterritorial":1,"vulnerability":0,"minimisation":0,"interoperability":2,"auditability":1,"timeliness":3,"security":3,"prohibition":1,"exante":2},"coverage":{"EU":3,"UK":2,"US_FED":1,"US_CA":2,"CAN":1,"BR":1,"IN":1,"CN":1,"JP":1,"KR":1,"AU":2,"SG":1},"instruments":["Directive 2024/1799 on repair","Ecodesign / ESPR","US state right-to-repair statutes"],"verify":"Support-period lengths and parts-availability duties vary by product category.","density":24,"cluster":6,"embedding":[-0.395,-0.013],"neighbours":[{"class":"goods_digital_elements","label":"Goods with digital elements","similarity":0.917},{"class":"payments_chargebacks","label":"Electronic payments and unauthorised transactions","similarity":0.909},{"class":"iot_security","label":"Consumer IoT and product cybersecurity","similarity":0.891},{"class":"crypto_consumer","label":"Crypto-asset consumer protection","similarity":0.884}]},{"id":"product_liability_digital","label":"Liability for defective digital products","family":"Digital product quality","weights":{"consent":0,"transparency":1,"fairness":2,"exit":0,"redress":3,"liability":3,"enforcement":2,"extraterritorial":2,"vulnerability":1,"minimisation":0,"interoperability":0,"auditability":2,"timeliness":1,"security":2,"prohibition":0,"exante":1},"coverage":{"EU":3,"UK":2,"US_FED":1,"US_CA":1,"CAN":1,"BR":2,"IN":1,"CN":2,"JP":2,"KR":2,"AU":2,"SG":1},"instruments":["Product Liability Directive 2024/2853 (software in scope)","state product liability doctrine (US)"],"verify":"The recast PLD brings software and AI into strict liability; confirm transposition status.","density":20,"cluster":4,"embedding":[-0.323,-0.065],"neighbours":[{"class":"intermediary_liability","label":"Intermediary liability and notice-and-action","similarity":0.895},{"class":"goods_digital_elements","label":"Goods with digital elements","similarity":0.887},{"class":"crypto_consumer","label":"Crypto-asset consumer protection","similarity":0.882},{"class":"payments_chargebacks","label":"Electronic payments and unauthorised transactions","similarity":0.878}]},{"id":"iot_security","label":"Consumer IoT and product cybersecurity","family":"Digital product quality","weights":{"consent":0,"transparency":2,"fairness":1,"exit":0,"redress":1,"liability":2,"enforcement":2,"extraterritorial":2,"vulnerability":1,"minimisation":1,"interoperability":1,"auditability":2,"timeliness":2,"security":3,"prohibition":2,"exante":3},"coverage":{"EU":3,"UK":3,"US_FED":1,"US_CA":2,"CAN":1,"BR":1,"IN":1,"CN":2,"JP":1,"KR":2,"AU":1,"SG":2},"instruments":["Cyber Resilience Act","RED delegated act 2022/30","PSTI Act 2022 (UK)","US Cyber Trust Mark","CA SB-327"],"verify":"Default-password and vulnerability-disclosure duties are the common core; certification schemes differ.","density":25,"cluster":5,"embedding":[-0.267,0.309],"neighbours":[{"class":"crypto_consumer","label":"Crypto-asset consumer protection","similarity":0.951},{"class":"online_safety_illegal","label":"Illegal and harmful content duties","similarity":0.907},{"class":"payments_chargebacks","label":"Electronic payments and unauthorised transactions","similarity":0.9},{"class":"updates_repair","label":"Update duty, repair and obsolescence","similarity":0.891}]},{"id":"platform_transparency","label":"Marketplace and ranking transparency","family":"Platforms and markets","weights":{"consent":0,"transparency":3,"fairness":2,"exit":0,"redress":2,"liability":2,"enforcement":3,"extraterritorial":3,"vulnerability":1,"minimisation":1,"interoperability":1,"auditability":3,"timeliness":2,"security":0,"prohibition":1,"exante":3},"coverage":{"EU":3,"UK":3,"US_FED":1,"US_CA":1,"CAN":1,"BR":2,"IN":2,"CN":3,"JP":2,"KR":2,"AU":2,"SG":1},"instruments":["DSA arts.24-32","P2B Regulation 2019/1150","Omnibus ranking disclosure","E-Commerce Law art.18 (CN)"],"verify":"Trader-identity (KYBC) duties apply only to marketplaces; check the service classification first.","density":27,"cluster":3,"embedding":[-0.139,0.133],"neighbours":[{"class":"content_moderation_rights","label":"User rights in content moderation","similarity":0.955},{"class":"cross_border_enforcement","label":"Cross-border enforcement and cooperation","similarity":0.931},{"class":"intermediary_liability","label":"Intermediary liability and notice-and-action","similarity":0.92},{"class":"online_safety_illegal","label":"Illegal and harmful content duties","similarity":0.912}]},{"id":"intermediary_liability","label":"Intermediary liability and notice-and-action","family":"Platforms and markets","weights":{"consent":0,"transparency":2,"fairness":2,"exit":1,"redress":2,"liability":3,"enforcement":2,"extraterritorial":3,"vulnerability":1,"minimisation":0,"interoperability":0,"auditability":2,"timeliness":3,"security":1,"prohibition":1,"exante":2},"coverage":{"EU":3,"UK":3,"US_FED":2,"US_CA":1,"CAN":1,"BR":2,"IN":2,"CN":3,"JP":2,"KR":2,"AU":2,"SG":2},"instruments":["DSA arts.4-9","47 USC 230 (US)","IT Rules 2021 (IN)","Marco Civil art.19 (BR)"],"verify":"The US safe harbour and the EU due-diligence model point in opposite directions; do not merge them.","density":25,"cluster":1,"embedding":[-0.226,-0.055],"neighbours":[{"class":"content_moderation_rights","label":"User rights in content moderation","similarity":0.947},{"class":"crypto_consumer","label":"Crypto-asset consumer protection","similarity":0.931},{"class":"platform_transparency","label":"Marketplace and ranking transparency","similarity":0.92},{"class":"online_safety_illegal","label":"Illegal and harmful content duties","similarity":0.918}]},{"id":"gatekeeper_obligations","label":"Gatekeeper and digital-markets duties","family":"Platforms and markets","weights":{"consent":1,"transparency":2,"fairness":3,"exit":2,"redress":2,"liability":2,"enforcement":3,"extraterritorial":3,"vulnerability":0,"minimisation":2,"interoperability":3,"auditability":3,"timeliness":2,"security":1,"prohibition":3,"exante":3},"coverage":{"EU":3,"UK":3,"US_FED":1,"US_CA":0,"CAN":1,"BR":1,"IN":1,"CN":3,"JP":2,"KR":2,"AU":1,"SG":1},"instruments":["DMA 2022/1925","DMCC Act 2024 pt.1 (UK SMS regime)","AMPSA (JP)","Platform rules (KR)"],"verify":"Designation is entity-specific; confirm whether the counterparty is actually designated.","density":35,"cluster":5,"embedding":[-0.081,0.191],"neighbours":[{"class":"platform_transparency","label":"Marketplace and ranking transparency","similarity":0.894},{"class":"data_protection","label":"General data protection","similarity":0.893},{"class":"crypto_consumer","label":"Crypto-asset consumer protection","similarity":0.88},{"class":"portability_interop","label":"Data portability and interoperability","similarity":0.872}]},{"id":"content_moderation_rights","label":"User rights in content moderation","family":"Platforms and markets","weights":{"consent":0,"transparency":3,"fairness":3,"exit":1,"redress":3,"liability":2,"enforcement":2,"extraterritorial":3,"vulnerability":2,"minimisation":1,"interoperability":0,"auditability":3,"timeliness":3,"security":0,"prohibition":1,"exante":3},"coverage":{"EU":3,"UK":3,"US_FED":0,"US_CA":1,"CAN":1,"BR":2,"IN":2,"CN":1,"JP":1,"KR":2,"AU":1,"SG":1},"instruments":["DSA arts.14-21 (statement of reasons, internal appeal, out-of-court settlement)","Online Safety Act 2023 (UK)"],"verify":"Appeal and out-of-court dispute rights are largely an EU innovation; check local analogues carefully.","density":30,"cluster":1,"embedding":[-0.076,-0.001],"neighbours":[{"class":"platform_transparency","label":"Marketplace and ranking transparency","similarity":0.955},{"class":"intermediary_liability","label":"Intermediary liability and notice-and-action","similarity":0.947},{"class":"redress_odr","label":"Collective redress and dispute resolution","similarity":0.929},{"class":"credit_bnpl","label":"Digital credit and buy-now-pay-later","similarity":0.923}]},{"id":"online_safety_illegal","label":"Illegal and harmful content duties","family":"Platforms and markets","weights":{"consent":0,"transparency":2,"fairness":1,"exit":0,"redress":2,"liability":3,"enforcement":3,"extraterritorial":3,"vulnerability":3,"minimisation":1,"interoperability":0,"auditability":3,"timeliness":3,"security":1,"prohibition":3,"exante":3},"coverage":{"EU":3,"UK":3,"US_FED":1,"US_CA":1,"CAN":2,"BR":2,"IN":2,"CN":3,"JP":2,"KR":3,"AU":3,"SG":2},"instruments":["DSA","Online Safety Act 2023 (UK)","Online Safety Act 2021 (AU)","IT Rules 2021 (IN)"],"verify":"Risk-assessment and age-assurance duties turn on service size and type.","density":31,"cluster":3,"embedding":[-0.073,0.135],"neighbours":[{"class":"crypto_consumer","label":"Crypto-asset consumer protection","similarity":0.923},{"class":"intermediary_liability","label":"Intermediary liability and notice-and-action","similarity":0.918},{"class":"platform_transparency","label":"Marketplace and ranking transparency","similarity":0.912},{"class":"iot_security","label":"Consumer IoT and product cybersecurity","similarity":0.907}]},{"id":"unfair_commercial_practices","label":"Misleading and aggressive practices","family":"Conduct and manipulation","weights":{"consent":0,"transparency":3,"fairness":3,"exit":1,"redress":3,"liability":2,"enforcement":3,"extraterritorial":2,"vulnerability":3,"minimisation":0,"interoperability":0,"auditability":1,"timeliness":1,"security":0,"prohibition":3,"exante":0},"coverage":{"EU":3,"UK":3,"US_FED":3,"US_CA":3,"CAN":3,"BR":3,"IN":3,"CN":2,"JP":3,"KR":3,"AU":3,"SG":3},"instruments":["UCPD 2005/29 + Annex I blacklist","FTC Act s.5","ACL ss.18,29","CDC arts.36-38 (BR)"],"verify":"The nearest thing to a universal rule in this field; the blacklist contents still differ.","density":25,"cluster":2,"embedding":[0.179,-0.263],"neighbours":[{"class":"fake_reviews_influencers","label":"Fake reviews and undisclosed endorsements","similarity":0.954},{"class":"unfair_terms","label":"Unfair contract terms","similarity":0.943},{"class":"pricing_transparency","label":"Price transparency and drip pricing","similarity":0.914},{"class":"credit_bnpl","label":"Digital credit and buy-now-pay-later","similarity":0.899}]},{"id":"dark_patterns","label":"Manipulative interface design","family":"Conduct and manipulation","weights":{"consent":3,"transparency":3,"fairness":3,"exit":2,"redress":2,"liability":1,"enforcement":3,"extraterritorial":2,"vulnerability":3,"minimisation":2,"interoperability":0,"auditability":2,"timeliness":1,"security":0,"prohibition":3,"exante":1},"coverage":{"EU":3,"UK":3,"US_FED":2,"US_CA":3,"CAN":1,"BR":1,"IN":1,"CN":2,"JP":1,"KR":2,"AU":2,"SG":1},"instruments":["DSA art.25","UCPD guidance 2021","CPRA s.1798.140(h) (consent obtained by dark pattern is not consent)","FTC enforcement"],"verify":"Mostly enforced through existing unfairness law; only the DSA and CPRA name the conduct directly.","density":31,"cluster":1,"embedding":[0.412,0.051],"neighbours":[{"class":"profiling_adtech","label":"Profiling and behavioural advertising","similarity":0.947},{"class":"direct_marketing_spam","label":"Unsolicited marketing and spam","similarity":0.94},{"class":"minors_protection","label":"Children, minors and age assurance","similarity":0.914},{"class":"eprivacy_tracking","label":"Cookies, trackers and communications confidentiality","similarity":0.91}]},{"id":"fake_reviews_influencers","label":"Fake reviews and undisclosed endorsements","family":"Conduct and manipulation","weights":{"consent":0,"transparency":3,"fairness":2,"exit":0,"redress":2,"liability":2,"enforcement":3,"extraterritorial":2,"vulnerability":2,"minimisation":0,"interoperability":0,"auditability":2,"timeliness":1,"security":0,"prohibition":3,"exante":1},"coverage":{"EU":3,"UK":3,"US_FED":3,"US_CA":2,"CAN":2,"BR":2,"IN":2,"CN":2,"JP":2,"KR":2,"AU":3,"SG":2},"instruments":["Omnibus Directive review-verification duty","FTC Rule on Consumer Reviews and Testimonials 2024","DMCC Act 2024 (UK)"],"verify":"Verification duties (did the reviewer buy it?) are stronger than mere prohibition; check which applies.","density":23,"cluster":2,"embedding":[0.1,-0.078],"neighbours":[{"class":"unfair_commercial_practices","label":"Misleading and aggressive practices","similarity":0.954},{"class":"pricing_transparency","label":"Price transparency and drip pricing","similarity":0.946},{"class":"online_safety_illegal","label":"Illegal and harmful content duties","similarity":0.905},{"class":"cross_border_enforcement","label":"Cross-border enforcement and cooperation","similarity":0.892}]},{"id":"direct_marketing_spam","label":"Unsolicited marketing and spam","family":"Conduct and manipulation","weights":{"consent":3,"transparency":2,"fairness":1,"exit":3,"redress":2,"liability":1,"enforcement":3,"extraterritorial":2,"vulnerability":2,"minimisation":2,"interoperability":0,"auditability":2,"timeliness":2,"security":0,"prohibition":3,"exante":0},"coverage":{"EU":3,"UK":3,"US_FED":3,"US_CA":2,"CAN":3,"BR":2,"IN":2,"CN":2,"JP":2,"KR":3,"AU":2,"SG":3},"instruments":["ePrivacy art.13","CAN-SPAM + TCPA (US)","CASL (CAN)","PDPA DNC (SG)"],"verify":"Opt-in versus opt-out is the fault line: CASL and ePrivacy are opt-in, CAN-SPAM is opt-out.","density":28,"cluster":1,"embedding":[0.405,-0.005],"neighbours":[{"class":"dark_patterns","label":"Manipulative interface design","similarity":0.94},{"class":"subscriptions_autorenewal","label":"Auto-renewal and cancellation","similarity":0.897},{"class":"eprivacy_tracking","label":"Cookies, trackers and communications confidentiality","similarity":0.896},{"class":"minors_protection","label":"Children, minors and age assurance","similarity":0.875}]},{"id":"minors_protection","label":"Children, minors and age assurance","family":"Vulnerable users and access","weights":{"consent":3,"transparency":2,"fairness":2,"exit":1,"redress":2,"liability":2,"enforcement":3,"extraterritorial":3,"vulnerability":3,"minimisation":3,"interoperability":0,"auditability":3,"timeliness":2,"security":2,"prohibition":3,"exante":3},"coverage":{"EU":3,"UK":3,"US_FED":2,"US_CA":3,"CAN":1,"BR":2,"IN":2,"CN":3,"JP":2,"KR":3,"AU":2,"SG":2},"instruments":["GDPR art.8","COPPA (US)","Age-Appropriate Design Code (UK, CA)","DSA art.28","Minors online protection rules (CN)"],"verify":"Age thresholds and assurance standards diverge; a compliant flow in one forum can be unlawful in another.","density":37,"cluster":1,"embedding":[0.164,0.304],"neighbours":[{"class":"profiling_adtech","label":"Profiling and behavioural advertising","similarity":0.957},{"class":"data_protection","label":"General data protection","similarity":0.942},{"class":"automated_decisions","label":"Automated decision-making and consumer AI","similarity":0.936},{"class":"eprivacy_tracking","label":"Cookies, trackers and communications confidentiality","similarity":0.924}]},{"id":"accessibility","label":"Accessibility of digital services","family":"Vulnerable users and access","weights":{"consent":0,"transparency":2,"fairness":2,"exit":0,"redress":2,"liability":2,"enforcement":2,"extraterritorial":1,"vulnerability":3,"minimisation":0,"interoperability":2,"auditability":2,"timeliness":2,"security":0,"prohibition":1,"exante":3},"coverage":{"EU":3,"UK":2,"US_FED":3,"US_CA":2,"CAN":2,"BR":1,"IN":1,"CN":1,"JP":2,"KR":2,"AU":2,"SG":1},"instruments":["European Accessibility Act 2019/882","ADA title III web litigation (US)","s.508 (US)","EN 301 549 / WCAG"],"verify":"The EAA applies from June 2025 with micro-enterprise carve-outs; confirm the entity size test.","density":24,"cluster":3,"embedding":[-0.163,0.049],"neighbours":[{"class":"content_moderation_rights","label":"User rights in content moderation","similarity":0.895},{"class":"platform_transparency","label":"Marketplace and ranking transparency","similarity":0.894},{"class":"online_safety_illegal","label":"Illegal and harmful content duties","similarity":0.883},{"class":"credit_bnpl","label":"Digital credit and buy-now-pay-later","similarity":0.879}]},{"id":"payments_chargebacks","label":"Electronic payments and unauthorised transactions","family":"Finance and payments","weights":{"consent":2,"transparency":3,"fairness":2,"exit":1,"redress":3,"liability":3,"enforcement":3,"extraterritorial":2,"vulnerability":2,"minimisation":1,"interoperability":2,"auditability":3,"timeliness":3,"security":3,"prohibition":1,"exante":2},"coverage":{"EU":3,"UK":3,"US_FED":3,"US_CA":2,"CAN":2,"BR":2,"IN":3,"CN":2,"JP":2,"KR":2,"AU":2,"SG":2},"instruments":["PSD2 2015/2366 (SCA, art.73 refunds)","Reg E / EFTA (US)","RBI authorised-payment framework (IN)"],"verify":"Liability-shift rules for unauthorised transactions differ in both cap and burden of proof.","density":36,"cluster":4,"embedding":[-0.157,0.102],"neighbours":[{"class":"crypto_consumer","label":"Crypto-asset consumer protection","similarity":0.955},{"class":"data_protection","label":"General data protection","similarity":0.944},{"class":"updates_repair","label":"Update duty, repair and obsolescence","similarity":0.909},{"class":"credit_bnpl","label":"Digital credit and buy-now-pay-later","similarity":0.907}]},{"id":"crypto_consumer","label":"Crypto-asset consumer protection","family":"Finance and payments","weights":{"consent":1,"transparency":3,"fairness":2,"exit":1,"redress":2,"liability":3,"enforcement":3,"extraterritorial":3,"vulnerability":2,"minimisation":0,"interoperability":1,"auditability":3,"timeliness":2,"security":3,"prohibition":2,"exante":3},"coverage":{"EU":3,"UK":2,"US_FED":1,"US_CA":1,"CAN":2,"BR":2,"IN":1,"CN":2,"JP":3,"KR":2,"AU":2,"SG":3},"instruments":["MiCA 2023/1114","FCA financial promotions regime (UK)","PSA amendments (JP)","PS Act (SG)"],"verify":"Promotion rules and custody duties are moving fast; treat any score here as provisional.","density":34,"cluster":4,"embedding":[-0.176,0.146],"neighbours":[{"class":"payments_chargebacks","label":"Electronic payments and unauthorised transactions","similarity":0.955},{"class":"iot_security","label":"Consumer IoT and product cybersecurity","similarity":0.951},{"class":"intermediary_liability","label":"Intermediary liability and notice-and-action","similarity":0.931},{"class":"online_safety_illegal","label":"Illegal and harmful content duties","similarity":0.923}]},{"id":"credit_bnpl","label":"Digital credit and buy-now-pay-later","family":"Finance and payments","weights":{"consent":1,"transparency":3,"fairness":3,"exit":2,"redress":3,"liability":2,"enforcement":3,"extraterritorial":1,"vulnerability":3,"minimisation":1,"interoperability":0,"auditability":2,"timeliness":3,"security":1,"prohibition":2,"exante":2},"coverage":{"EU":3,"UK":3,"US_FED":2,"US_CA":2,"CAN":2,"BR":2,"IN":2,"CN":2,"JP":2,"KR":2,"AU":3,"SG":2},"instruments":["Consumer Credit Directive 2023/2225 (BNPL in scope)","CFPB BNPL interpretive rule (US)","UK BNPL regulation"],"verify":"CCD2 applies from Nov 2026; confirm whether the transition rules cover the transaction.","density":32,"cluster":1,"embedding":[0.083,-0.105],"neighbours":[{"class":"content_moderation_rights","label":"User rights in content moderation","similarity":0.923},{"class":"subscriptions_autorenewal","label":"Auto-renewal and cancellation","similarity":0.915},{"class":"distance_selling","label":"Distance selling and pre-contractual information","similarity":0.913},{"class":"redress_odr","label":"Collective redress and dispute resolution","similarity":0.913}]},{"id":"redress_odr","label":"Collective redress and dispute resolution","family":"Enforcement","weights":{"consent":0,"transparency":2,"fairness":2,"exit":1,"redress":3,"liability":1,"enforcement":3,"extraterritorial":2,"vulnerability":2,"minimisation":0,"interoperability":0,"auditability":2,"timeliness":3,"security":0,"prohibition":0,"exante":1},"coverage":{"EU":3,"UK":2,"US_FED":1,"US_CA":1,"CAN":2,"BR":3,"IN":2,"CN":2,"JP":1,"KR":2,"AU":2,"SG":1},"instruments":["Representative Actions Directive 2020/1828","ADR Directive 2013/11","class actions (US, AU)","CDC collective actions (BR)"],"verify":"The EU ODR platform was wound down in 2025; do not cite it as a live route.","density":22,"cluster":1,"embedding":[-0.065,-0.233],"neighbours":[{"class":"content_moderation_rights","label":"User rights in content moderation","similarity":0.929},{"class":"cross_border_enforcement","label":"Cross-border enforcement and cooperation","similarity":0.919},{"class":"credit_bnpl","label":"Digital credit and buy-now-pay-later","similarity":0.913},{"class":"intermediary_liability","label":"Intermediary liability and notice-and-action","similarity":0.896}]},{"id":"cross_border_enforcement","label":"Cross-border enforcement and cooperation","family":"Enforcement","weights":{"consent":0,"transparency":2,"fairness":1,"exit":0,"redress":3,"liability":2,"enforcement":3,"extraterritorial":3,"vulnerability":1,"minimisation":0,"interoperability":1,"auditability":2,"timeliness":2,"security":0,"prohibition":1,"exante":1},"coverage":{"EU":3,"UK":2,"US_FED":2,"US_CA":1,"CAN":2,"BR":2,"IN":1,"CN":1,"JP":1,"KR":1,"AU":2,"SG":2},"instruments":["CPC Regulation 2017/2394","ICPEN","US SAFE WEB Act","GPEN (privacy)"],"verify":"Cooperation instruments give regulators reach that private claimants do not have.","density":22,"cluster":1,"embedding":[-0.167,-0.095],"neighbours":[{"class":"platform_transparency","label":"Marketplace and ranking transparency","similarity":0.931},{"class":"redress_odr","label":"Collective redress and dispute resolution","similarity":0.919},{"class":"intermediary_liability","label":"Intermediary liability and notice-and-action","similarity":0.915},{"class":"content_moderation_rights","label":"User rights in content moderation","similarity":0.899}]}],"emphasisZ":[[-0.56,-0.606,0.363,0.105,0.066,0.583,-0.925,-0.161,-1.44,-0.057,1.787,0.512,0.476,1.042,-1.185,1.343],[-0.205,0.534,0.61,0.589,-0.197,0.118,-0.438,-0.336,-1.138,0.256,0.089,0.097,0.585,-0.072,-0.251,0.284],[0.218,-0.321,-1.555,-2.238,-0.319,-0.706,2.218,0.086,2.025,-0.628,0.821,0.582,-1.289,-1.594,2.261,0.609],[2.391,2.261,0.149,0.226,-1.673,-2.089,-0.938,-2.044,1.201,1.851,-0.123,-1.019,-2.129,1.049,0.663,0.811],[-0.737,-0.824,-0.266,1.47,1.448,-0.11,0.632,-0.776,0.33,-1.564,1.342,-1.843,0.817,-1.252,0.084,-1.859],[-0.312,0.762,1.021,0.921,1.116,0.015,-0.401,0.466,-0.285,-0.358,-1.563,-0.268,0.849,-0.897,-1.442,-1.605],[-0.144,0.877,0.405,0.052,0.065,-0.481,-0.47,0.397,0.149,0.244,0.332,0.447,0.862,-0.32,-0.722,0.023],[-0.07,-1.546,0.193,0.399,-0.412,0.83,-0.514,1.064,-1.339,0.629,-0.544,1.223,0.572,0.733,-0.584,0.598],[0.056,-0.163,0.279,-0.858,-0.499,0.638,-0.226,0.633,0.116,0.316,0.412,0.817,-0.913,0.625,0.137,0.449],[0.621,-0.778,-0.296,0.77,-0.873,-1.008,-0.779,0.342,0.016,0.696,-0.927,0.924,0.444,-0.347,0.041,0.632],[-1.86,0.08,1.305,-0.88,1.804,1.807,1.534,-1.249,0.202,-1.819,-1.046,-1.626,0.46,-0.534,-0.006,-1.009],[0.603,-0.277,-2.207,-0.555,-0.526,0.403,0.306,1.578,0.163,0.435,-0.581,0.155,-0.733,1.568,1.004,-0.277]],"jurisdictionDistance":[[0.0,0.475,1.458,1.238,1.122,1.232,0.787,0.471,0.703,1.052,1.187,1.226],[0.475,0.0,1.714,1.013,1.088,0.699,0.558,0.667,1.211,0.869,1.068,1.522],[1.458,1.714,0.0,0.923,1.006,1.565,1.339,1.462,0.781,1.124,0.988,0.701],[1.238,1.013,0.923,-0.0,1.367,1.309,1.024,1.428,0.926,0.801,1.457,0.934],[1.122,1.088,1.006,1.367,0.0,0.677,1.1,1.416,1.689,1.413,0.488,1.364],[1.232,0.699,1.565,1.309,0.677,0.0,0.566,0.996,1.54,1.035,0.604,1.417],[0.787,0.558,1.339,1.024,1.1,0.566,0.0,0.999,1.143,0.828,1.229,1.429],[0.471,0.667,1.462,1.428,1.416,0.996,0.999,0.0,0.639,0.522,1.311,0.8],[0.703,1.211,0.781,0.926,1.689,1.54,1.143,0.639,0.0,1.024,1.326,0.593],[1.052,0.869,1.124,0.801,1.413,1.035,0.828,0.522,1.024,-0.0,1.702,0.881],[1.187,1.068,0.988,1.457,0.488,0.604,1.229,1.311,1.326,1.702,0.0,1.36],[1.226,1.522,0.701,0.934,1.364,1.417,1.429,0.8,0.593,0.881,1.36,-0.0]],"primitiveCorrelation":[[1.0,0.342,0.0,0.407,-0.368,-0.406,0.147,0.104,0.313,0.789,-0.088,0.236,-0.248,0.077,0.355,-0.025],[0.342,1.0,0.345,-0.02,-0.197,-0.312,0.298,-0.004,0.328,0.283,-0.204,0.171,-0.107,-0.215,0.282,0.031],[0.0,0.345,1.0,0.136,0.334,0.016,0.09,-0.173,0.284,0.008,-0.166,-0.055,-0.189,-0.263,0.092,-0.053],[0.407,-0.02,0.136,1.0,0.111,-0.287,-0.08,-0.325,-0.178,0.015,-0.004,-0.364,0.253,-0.116,0.045,-0.393],[-0.368,-0.197,0.334,0.111,1.0,0.483,0.307,-0.041,0.092,-0.505,-0.107,-0.165,0.234,-0.119,-0.218,-0.301],[-0.406,-0.312,0.016,-0.287,0.483,1.0,0.066,0.308,-0.022,-0.291,0.205,0.254,0.117,0.509,-0.164,0.285],[0.147,0.298,0.09,-0.08,0.307,0.066,1.0,0.351,0.386,0.074,-0.143,0.309,0.111,-0.162,0.562,-0.019],[0.104,-0.004,-0.173,-0.325,-0.041,0.308,0.351,1.0,0.134,0.363,0.139,0.781,0.003,0.183,0.241,0.544],[0.313,0.328,0.284,-0.178,0.092,-0.022,0.386,0.134,1.0,0.3,-0.439,0.266,-0.196,-0.238,0.468,0.073],[0.789,0.283,0.008,0.015,-0.505,-0.291,0.074,0.363,0.3,1.0,0.028,0.537,-0.337,0.133,0.338,0.312],[-0.088,-0.204,-0.166,-0.004,-0.107,0.205,-0.143,0.139,-0.439,0.028,1.0,0.234,0.148,0.486,-0.257,0.44],[0.236,0.171,-0.055,-0.364,-0.165,0.254,0.309,0.781,0.266,0.537,0.234,1.0,0.052,0.289,0.136,0.751],[-0.248,-0.107,-0.189,0.253,0.234,0.117,0.111,0.003,-0.196,-0.337,0.148,0.052,1.0,0.117,-0.225,0.16],[0.077,-0.215,-0.263,-0.116,-0.119,0.509,-0.162,0.183,-0.238,0.133,0.486,0.289,0.117,1.0,-0.175,0.458],[0.355,0.282,0.092,0.045,-0.218,-0.164,0.562,0.241,0.468,0.338,-0.257,0.136,-0.225,-0.175,1.0,0.039],[-0.025,0.031,-0.053,-0.393,-0.301,0.285,-0.019,0.544,0.073,0.312,0.44,0.751,0.16,0.458,0.039,1.0]],"divergence":[{"class":"gatekeeper_obligations","label":"Gatekeeper and digital-markets duties","mean":1.58,"sd":1.0,"density":35,"risk":11.62},{"class":"content_moderation_rights","label":"User rights in content moderation","mean":1.5,"sd":0.9,"density":30,"risk":9.05},{"class":"dark_patterns","label":"Manipulative interface design","mean":1.83,"sd":0.83,"density":31,"risk":8.63},{"class":"crypto_consumer","label":"Crypto-asset consumer protection","mean":2.0,"sd":0.74,"density":34,"risk":8.37},{"class":"minors_protection","label":"Children, minors and age assurance","mean":2.33,"sd":0.65,"density":37,"risk":8.03},{"class":"data_protection","label":"General data protection","mean":2.67,"sd":0.65,"density":36,"risk":7.82},{"class":"online_safety_illegal","label":"Illegal and harmful content duties","mean":2.25,"sd":0.75,"density":31,"risk":7.79},{"class":"subscriptions_autorenewal","label":"Auto-renewal and cancellation","mean":1.75,"sd":0.87,"density":25,"risk":7.22},{"class":"platform_transparency","label":"Marketplace and ranking transparency","mean":1.92,"sd":0.79,"density":27,"risk":7.14},{"class":"withdrawal_rights","label":"Cooling-off and right of withdrawal","mean":2.0,"sd":1.04,"density":20,"risk":6.96},{"class":"automated_decisions","label":"Automated decision-making and consumer AI","mean":1.58,"sd":0.67,"density":30,"risk":6.69},{"class":"iot_security","label":"Consumer IoT and product cybersecurity","mean":1.67,"sd":0.78,"density":25,"risk":6.49},{"class":"profiling_adtech","label":"Profiling and behavioural advertising","mean":1.92,"sd":0.67,"density":29,"risk":6.46},{"class":"digital_content_conformity","label":"Conformity of digital content and services","mean":1.5,"sd":0.9,"density":21,"risk":6.33},{"class":"eprivacy_tracking","label":"Cookies, trackers and communications confidentiality","mean":1.83,"sd":0.72,"density":25,"risk":5.98},{"class":"payments_chargebacks","label":"Electronic payments and unauthorised transactions","mean":2.33,"sd":0.49,"density":36,"risk":5.91},{"class":"accessibility","label":"Accessibility of digital services","mean":1.83,"sd":0.72,"density":24,"risk":5.74},{"class":"goods_digital_elements","label":"Goods with digital elements","mean":1.33,"sd":0.78,"density":22,"risk":5.71},{"class":"intermediary_liability","label":"Intermediary liability and notice-and-action","mean":2.08,"sd":0.67,"density":25,"risk":5.57},{"class":"updates_repair","label":"Update duty, repair and obsolescence","mean":1.42,"sd":0.67,"density":24,"risk":5.35},{"class":"redress_odr","label":"Collective redress and dispute resolution","mean":1.83,"sd":0.72,"density":22,"risk":5.26},{"class":"portability_interop","label":"Data portability and interoperability","mean":1.67,"sd":0.65,"density":24,"risk":5.21},{"class":"distance_selling","label":"Distance selling and pre-contractual information","mean":2.25,"sd":0.75,"density":20,"risk":5.03},{"class":"direct_marketing_spam","label":"Unsolicited marketing and spam","mean":2.5,"sd":0.52,"density":28,"risk":4.87},{"class":"credit_bnpl","label":"Digital credit and buy-now-pay-later","mean":2.25,"sd":0.45,"density":32,"risk":4.82},{"class":"cross_border_enforcement","label":"Cross-border enforcement and cooperation","mean":1.67,"sd":0.65,"density":22,"risk":4.78},{"class":"personalised_pricing","label":"Personalised and algorithmic pricing","mean":0.92,"sd":0.67,"density":21,"risk":4.68},{"class":"unfair_terms","label":"Unfair contract terms","mean":2.33,"sd":0.65,"density":21,"risk":4.56},{"class":"product_liability_digital","label":"Liability for defective digital products","mean":1.67,"sd":0.65,"density":20,"risk":4.34},{"class":"fake_reviews_influencers","label":"Fake reviews and undisclosed endorsements","mean":2.33,"sd":0.49,"density":23,"risk":3.77},{"class":"pricing_transparency","label":"Price transparency and drip pricing","mean":2.25,"sd":0.45,"density":19,"risk":2.86},{"class":"unfair_commercial_practices","label":"Misleading and aggressive practices","mean":2.92,"sd":0.29,"density":25,"risk":2.41}],"widestPairs":[{"a":"UK","b":"US_FED","distance":1.714},{"a":"KR","b":"AU","distance":1.702},{"a":"CAN","b":"JP","distance":1.689},{"a":"US_FED","b":"BR","distance":1.565},{"a":"BR","b":"JP","distance":1.54},{"a":"UK","b":"SG","distance":1.522}],"embeddingVariance":0.5073,"singularValues":[1.274,1.234,0.972,0.677,0.609,0.574,0.5,0.473]}</script>
+<script>
+"use strict";
+
+const DATA = JSON.parse(document.getElementById("matrix-data").textContent);
+const $ = (sel) => document.querySelector(sel);
+const esc = (value) => String(value).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const PRIMITIVES = DATA.primitives;
+const JURISDICTIONS = DATA.jurisdictions;
+const CLASSES = DATA.classes;
+const DIVERGENCE = new Map(DATA.divergence.map((d) => [d.class, d]));
+const SEQ = ["--seq-0", "--seq-1", "--seq-2", "--seq-3", "--seq-4"];
+const SCALE_WORDS = { weights: DATA.scales.weights, coverage: DATA.scales.coverage };
+
+let view = "weights";
+let selected = CLASSES[0].id;
+let sortMode = "family";
+
+/* ------------------------------------------------------------------ chrome */
+$("#p-engine").textContent = DATA.engine.replace(/ for .*/, "");
+$("#p-date").textContent = DATA.generated;
+$("#p-classes").textContent = CLASSES.length;
+$("#disclaimer").textContent = DATA.disclaimer;
+$("#method-disclaimer").textContent = DATA.disclaimer;
+
+const widest = DATA.widestPairs[0];
+const topRisk = DATA.divergence[0];
+$("#tiles").innerHTML = [
+  [CLASSES.length, "Classifications"],
+  [PRIMITIVES.length + " × " + JURISDICTIONS.length, "Primitives × forums"],
+  [Math.round(DATA.embeddingVariance * 100) + "%", "Variance in two dimensions"],
+  [topRisk.class.replace(/_/g, " "), "Highest divergence risk"],
+  [widest.a + " ↔ " + widest.b, "Widest emphasis gap"],
+].map(([value, label]) =>
+  `<div class="tile"><span class="v num">${esc(value)}</span><span class="k">${esc(label)}</span></div>`).join("");
+
+$("#scales").innerHTML = [
+  ["Weight", Object.entries(DATA.scales.weights).map(([k, v]) => `${k} ${v}`).join(" · ")],
+  ["Coverage", Object.entries(DATA.scales.coverage).map(([k, v]) => `${k} ${v}`).join(" · ")],
+  ["Density", "sum of a classification's sixteen weights"],
+  ["Emphasis", "standard deviations from the consensus of the twelve forums"],
+  ["Risk", "coverage spread × density ÷ 3"],
+].map(([k, v]) => `<dt>${esc(k)}</dt><dd class="text">${esc(v)}</dd>`).join("");
+
+/* ----------------------------------------------------------------- tooltip */
+const tooltip = $("#tooltip");
+function showTip(event, html) {
+  tooltip.innerHTML = html;
+  tooltip.style.opacity = "1";
+  const pad = 14;
+  const rect = tooltip.getBoundingClientRect();
+  let x = event.clientX + pad;
+  let y = event.clientY + pad;
+  if (x + rect.width > window.innerWidth - 8) x = event.clientX - rect.width - pad;
+  if (y + rect.height > window.innerHeight - 8) y = event.clientY - rect.height - pad;
+  tooltip.style.left = Math.max(8, x) + "px";
+  tooltip.style.top = Math.max(8, y) + "px";
+}
+function hideTip() { tooltip.style.opacity = "0"; }
+document.addEventListener("scroll", hideTip, { passive: true });
+
+/* ------------------------------------------------------------------ matrix */
+function sortedClasses() {
+  const copy = [...CLASSES];
+  if (sortMode === "density") return copy.sort((a, b) => b.density - a.density);
+  if (sortMode === "cluster") return copy.sort((a, b) => a.cluster - b.cluster || b.density - a.density);
+  if (sortMode === "divergence") return copy.sort((a, b) => DIVERGENCE.get(b.id).risk - DIVERGENCE.get(a.id).risk);
+  return copy.sort((a, b) => a.family.localeCompare(b.family) || a.label.localeCompare(b.label));
+}
+
+function columns() {
+  return view === "weights"
+    ? PRIMITIVES.map((p) => ({ id: p.id, label: p.label, gloss: p.gloss }))
+    : JURISDICTIONS.map((j) => ({ id: j.id, label: j.label, gloss: j.family }));
+}
+
+function valueFor(cls, columnId) {
+  return view === "weights" ? cls.weights[columnId] : cls.coverage[columnId];
+}
+
+function renderMatrix() {
+  const cols = columns();
+  const rows = sortedClasses();
+  const head = cols.map((c) => `<th scope="col"><span>${esc(c.label)}</span></th>`).join("");
+  const body = rows.map((cls) => {
+    const cells = cols.map((col) => {
+      const value = valueFor(cls, col.id);
+      return `<td class="cell" style="background:var(${SEQ[value + 1]})" data-class="${cls.id}" `
+        + `data-col="${col.id}" data-value="${value}" tabindex="0" role="img" `
+        + `aria-label="${esc(cls.label)}, ${esc(col.label)}: ${value}"></td>`;
+    }).join("");
+    const total = cols.reduce((sum, col) => sum + valueFor(cls, col.id), 0);
+    return `<tr data-class="${cls.id}" aria-selected="${cls.id === selected}">`
+      + `<th scope="row" title="${esc(cls.label)}">${esc(cls.label)}</th>${cells}`
+      + `<td class="rowend num">${total}</td></tr>`;
+  }).join("");
+
+  $("#matrix").innerHTML =
+    `<table class="matrix"><thead><tr><th></th>${head}<th></th></tr></thead><tbody>${body}</tbody></table>`;
+
+  $("#legend").innerHTML =
+    `<span>${view === "weights" ? "normative weight" : "forum coverage"}</span>`
+    + `<span class="swatches">${[0, 1, 2, 3].map((v) =>
+        `<span class="sw" style="background:var(${SEQ[v + 1]})" title="${v}"></span>`).join("")}</span>`
+    + `<span>${esc(Object.entries(SCALE_WORDS[view]).map(([k, v]) => `${k} ${v}`).join(" · "))}</span>`
+    + `<span>right column: row total</span>`;
+
+  $("#matrix-table").innerHTML =
+    `<table class="data"><thead><tr><th>Classification</th>`
+    + cols.map((c) => `<th>${esc(c.id)}</th>`).join("") + `<th>total</th></tr></thead><tbody>`
+    + rows.map((cls) => `<tr><td class="text">${esc(cls.label)}</td>`
+        + cols.map((col) => `<td>${valueFor(cls, col.id)}</td>`).join("")
+        + `<td>${cols.reduce((sum, col) => sum + valueFor(cls, col.id), 0)}</td></tr>`).join("")
+    + `</tbody></table>`;
+}
+
+$("#matrix").addEventListener("mousemove", (event) => {
+  const cell = event.target.closest("td.cell");
+  if (!cell) { hideTip(); return; }
+  const cls = CLASSES.find((c) => c.id === cell.dataset.class);
+  const col = columns().find((c) => c.id === cell.dataset.col);
+  const value = Number(cell.dataset.value);
+  showTip(event,
+    `<strong>${esc(cls.label)}</strong>`
+    + `<div class="t-val">${esc(col.label)} — ${value}: ${esc(SCALE_WORDS[view][value])}</div>`
+    + `<div class="t-val" style="margin-top:.25rem">${esc(col.gloss || "")}</div>`);
+});
+$("#matrix").addEventListener("mouseleave", hideTip);
+$("#matrix").addEventListener("click", (event) => {
+  const row = event.target.closest("tr[data-class]");
+  if (row) select(row.dataset.class);
+});
+
+for (const button of document.querySelectorAll("button[data-view]")) {
+  button.addEventListener("click", () => {
+    view = button.dataset.view;
+    for (const other of document.querySelectorAll("button[data-view]")) {
+      other.setAttribute("aria-pressed", String(other === button));
+    }
+    renderMatrix();
+  });
+}
+$("#sort").addEventListener("change", (event) => { sortMode = event.target.value; renderMatrix(); });
+
+/* ----------------------------------------------------------------- dossier */
+function select(classId) {
+  selected = classId;
+  renderMatrix();
+  renderDossier();
+  renderMap();
+}
+
+function renderDossier() {
+  const cls = CLASSES.find((c) => c.id === selected);
+  const divergence = DIVERGENCE.get(cls.id);
+  const rank = DATA.divergence.findIndex((d) => d.class === cls.id) + 1;
+  const topWeights = PRIMITIVES
+    .map((p) => ({ label: p.label, value: cls.weights[p.id] }))
+    .filter((w) => w.value >= 2)
+    .sort((a, b) => b.value - a.value);
+
+  $("#dossier").innerHTML = `
+    <p class="family">${esc(cls.family)}</p>
+    <h3>${esc(cls.label)}</h3>
+    <dl class="kv">
+      <dt>Density</dt><dd>${cls.density} of 48</dd>
+      <dt>Cluster</dt><dd>${cls.cluster}</dd>
+      <dt>Divergence</dt><dd>${divergence.risk} (rank ${rank} of ${CLASSES.length})</dd>
+      <dt>Mean coverage</dt><dd>${divergence.mean.toFixed(2)} ± ${divergence.sd.toFixed(2)}</dd>
+    </dl>
+    <p class="note" style="margin:0 0 .2rem">Defining and substantial primitives</p>
+    <div class="chips">${topWeights.map((w) =>
+      `<span class="chip">${esc(w.label)} ${w.value}</span>`).join("")}</div>
+    <p class="note" style="margin:.9rem 0 0">Coverage by forum</p>
+    <div class="coverage-row">${JURISDICTIONS.map((j) =>
+      `<div style="background:var(${SEQ[cls.coverage[j.id] + 1]})" title="${esc(j.label)}: ${cls.coverage[j.id]}">`
+      + `<span>${esc(j.id.replace("US_", ""))}</span></div>`).join("")}</div>
+    <p class="note" style="margin:1.4rem 0 0">Instruments</p>
+    <ul class="plain">${cls.instruments.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>
+    <p class="note" style="margin:.9rem 0 0">Nearest in normative space</p>
+    <ul class="plain">${cls.neighbours.map((n) =>
+      `<li><a href="#" data-goto="${n.class}">${esc(n.label)}</a> <span class="num">${n.similarity.toFixed(3)}</span></li>`).join("")}</ul>
+    <p class="verify"><strong>Verify:</strong> ${esc(cls.verify)}</p>`;
+
+  for (const link of $("#dossier").querySelectorAll("a[data-goto]")) {
+    link.addEventListener("click", (event) => { event.preventDefault(); select(link.dataset.goto); });
+  }
+}
+
+/* --------------------------------------------------------------------- map */
+function renderMap() {
+  const svg = $("#map");
+  const width = svg.clientWidth || 560;
+  const height = 440;
+  const pad = 34;
+  const xs = CLASSES.map((c) => c.embedding[0]);
+  const ys = CLASSES.map((c) => c.embedding[1]);
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  const yMin = Math.min(...ys), yMax = Math.max(...ys);
+  const sx = (v) => pad + ((v - xMin) / (xMax - xMin)) * (width - pad * 2);
+  const sy = (v) => height - pad - ((v - yMin) / (yMax - yMin)) * (height - pad * 2);
+  const maxDensity = Math.max(...CLASSES.map((c) => c.density));
+
+  const labelled = new Set([selected,
+    ...[...CLASSES].sort((a, b) => b.density - a.density).slice(0, 6).map((c) => c.id)]);
+
+  const dots = CLASSES.map((cls) => {
+    const isSelected = cls.id === selected;
+    const r = 4 + (cls.density / maxDensity) * 6;
+    return `<circle class="dot" cx="${sx(cls.embedding[0]).toFixed(1)}" cy="${sy(cls.embedding[1]).toFixed(1)}" `
+      + `r="${r.toFixed(1)}" fill="var(--accent)" fill-opacity="${isSelected ? 1 : 0.55}" `
+      + `stroke="var(--surface)" stroke-width="2" data-class="${cls.id}"><title>${esc(cls.label)} `
+      + `— density ${cls.density}</title></circle>`;
+  }).join("");
+
+  const labels = CLASSES.filter((c) => labelled.has(c.id)).map((cls) => {
+    const x = sx(cls.embedding[0]);
+    const y = sy(cls.embedding[1]);
+    const anchor = x > width * 0.72 ? "end" : "start";
+    const dx = anchor === "end" ? -12 : 12;
+    return `<text class="${cls.id === selected ? "selected" : ""}" x="${(x + dx).toFixed(1)}" `
+      + `y="${(y + 3.5).toFixed(1)}" text-anchor="${anchor}">${esc(cls.label.slice(0, 34))}</text>`;
+  }).join("");
+
+  svg.innerHTML =
+    `<line x1="${pad}" y1="${sy(0).toFixed(1)}" x2="${width - pad}" y2="${sy(0).toFixed(1)}" `
+    + `stroke="var(--hair)" stroke-width="1"/>`
+    + `<line x1="${sx(0).toFixed(1)}" y1="${pad}" x2="${sx(0).toFixed(1)}" y2="${height - pad}" `
+    + `stroke="var(--hair)" stroke-width="1"/>` + dots + labels;
+
+  $("#map-note").textContent =
+    `First two singular vectors hold ${Math.round(DATA.embeddingVariance * 100)}% of the variance `
+    + `(singular values ${DATA.singularValues.slice(0, 4).map((v) => v.toFixed(2)).join(", ")}…), `
+    + `so read proximity, not coordinates.`;
+
+  for (const dot of svg.querySelectorAll(".dot")) {
+    dot.addEventListener("click", () => select(dot.dataset.class));
+    dot.addEventListener("mousemove", (event) => {
+      const cls = CLASSES.find((c) => c.id === dot.dataset.class);
+      showTip(event, `<strong>${esc(cls.label)}</strong><div class="t-val">${esc(cls.family)} · density `
+        + `${cls.density} · cluster ${cls.cluster}</div>`);
+    });
+    dot.addEventListener("mouseleave", hideTip);
+  }
+}
+
+function renderNeighbours() {
+  const clusters = new Map();
+  for (const cls of CLASSES) {
+    if (!clusters.has(cls.cluster)) clusters.set(cls.cluster, []);
+    clusters.get(cls.cluster).push(cls);
+  }
+  $("#neighbours").innerHTML = [...clusters.entries()].sort((a, b) => a[0] - b[0]).map(([id, members]) => {
+    const exemplar = [...members].sort((a, b) => b.density - a.density)[0];
+    return `<div style="margin-bottom:.8rem">
+      <div style="font-size:.78rem;color:var(--ink-3)">Cluster ${id} · ${members.length} classifications</div>
+      <div style="font-size:.88rem;font-weight:500">${esc(exemplar.label)}</div>
+      <div class="chips" style="margin-top:.3rem">${members.filter((m) => m.id !== exemplar.id).map((m) =>
+        `<span class="chip"><a href="#" data-goto="${m.id}" style="text-decoration:none">${esc(m.label)}</a></span>`).join("")}</div>
+    </div>`;
+  }).join("");
+  for (const link of $("#neighbours").querySelectorAll("a[data-goto]")) {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      select(link.dataset.goto);
+      $("#matrix").scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+}
+
+/* --------------------------------------------------------------- forums */
+$("#jurisdiction").innerHTML = JURISDICTIONS.map((j) =>
+  `<option value="${j.id}">${esc(j.label)}</option>`).join("");
+$("#compare").innerHTML = JURISDICTIONS.map((j) =>
+  `<option value="${j.id}"${j.id === "US_FED" ? " selected" : ""}>${esc(j.label)}</option>`).join("");
+
+function renderJurisdiction() {
+  const id = $("#jurisdiction").value;
+  const index = DATA.jurisdictionIds.indexOf(id);
+  const record = JURISDICTIONS[index];
+  const z = DATA.emphasisZ[index];
+  const extent = Math.max(...DATA.emphasisZ.flat().map(Math.abs));
+
+  const rows = PRIMITIVES.map((p, k) => ({ label: p.label, gloss: p.gloss, value: z[k] }))
+    .sort((a, b) => b.value - a.value);
+
+  $("#emphasis").innerHTML = `<div class="diverge">` + rows.map((row) => {
+    const width = (Math.abs(row.value) / extent) * 50;
+    const positive = row.value >= 0;
+    return `<div class="dv-row" data-gloss="${esc(row.gloss)}" data-label="${esc(row.label)}" data-value="${row.value}">
+      <span class="lab" style="color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(row.label)}</span>
+      <span class="dv-track">
+        <span class="dv-bar ${positive ? "pos" : "neg"}" style="width:${width.toFixed(1)}%"></span>
+        <span class="dv-val" style="${positive ? `left:calc(50% + ${width.toFixed(1)}% + 6px)` : `right:calc(50% + ${width.toFixed(1)}% + 6px)`}">${row.value.toFixed(2)}</span>
+      </span>
+    </div>`;
+  }).join("") + `</div>
+    <p class="note" style="margin-top:.7rem">
+      ${esc(record.label)} occupies ${record.coverageScore} coverage points of a possible
+      ${CLASSES.length * 3}. Emphasis is independent of that total: it says what this forum leans on,
+      not how much law it has.</p>`;
+
+  $("#emphasis-table").innerHTML = `<table class="data"><thead><tr><th>Primitive</th><th>Emphasis (σ)</th></tr></thead>`
+    + `<tbody>${rows.map((r) => `<tr><td class="text">${esc(r.label)}</td><td>${r.value.toFixed(3)}</td></tr>`).join("")}</tbody></table>`;
+
+  $("#gaps-title").textContent = `Thinnest coverage — ${record.label}`;
+  $("#gaps").innerHTML = record.gaps.length
+    ? `<div class="bars">` + record.gaps.map((gap) => `
+        <div class="bar-row">
+          <span class="lab"><a href="#" data-goto="${gap.class}" style="text-decoration:none">${esc(gap.label)}</a></span>
+          <span class="bar-track"><span class="bar-fill" style="width:${(gap.density / 48 * 100).toFixed(1)}%;opacity:${gap.coverage ? 0.55 : 1}"></span></span>
+          <span class="val">${gap.coverage}/3</span>
+        </div>`).join("") + `</div>
+        <p class="note" style="margin-top:.5rem">Bar length is the classification's density; the figure is this forum's coverage of it.</p>`
+    : `<p class="note">No dense classification is left at partial coverage — this forum occupies the field substantially throughout.</p>`;
+
+  for (const link of $("#gaps").querySelectorAll("a[data-goto]")) {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      select(link.dataset.goto);
+      $("#matrix").scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+  renderComparison();
+}
+
+function renderComparison() {
+  const a = $("#jurisdiction").value;
+  const b = $("#compare").value;
+  const ia = DATA.jurisdictionIds.indexOf(a);
+  const ib = DATA.jurisdictionIds.indexOf(b);
+  const labelA = JURISDICTIONS[ia].label;
+  const labelB = JURISDICTIONS[ib].label;
+
+  if (a === b) {
+    $("#comparison").innerHTML = `<p class="note">Choose a second forum to compare.</p>`;
+    return;
+  }
+
+  const distance = DATA.jurisdictionDistance[ia][ib];
+  const deltas = PRIMITIVES.map((p, k) => ({
+    label: p.label, a: DATA.emphasisZ[ia][k], b: DATA.emphasisZ[ib][k],
+    delta: DATA.emphasisZ[ia][k] - DATA.emphasisZ[ib][k],
+  })).sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta)).slice(0, 4);
+
+  const coverageGaps = CLASSES.map((cls) => ({
+    label: cls.label, id: cls.id, gap: cls.coverage[a] - cls.coverage[b],
+  })).filter((g) => Math.abs(g.gap) >= 2).sort((x, y) => Math.abs(y.gap) - Math.abs(x.gap)).slice(0, 5);
+
+  const all = DATA.jurisdictionDistance.flatMap((row, i) => row.filter((_, j) => j > i));
+  const maxDistance = Math.max(...all);
+
+  $("#comparison").innerHTML = `
+    <p class="note" style="margin-bottom:.4rem">
+      Emphasis distance <span class="num" style="color:var(--ink);font-weight:600">${distance.toFixed(3)}</span>
+      of a field maximum ${maxDistance.toFixed(3)} — ${distance > 1.2 ? "far apart in character"
+        : distance > 0.8 ? "materially different" : "closely aligned"}.
+    </p>
+    <table class="data"><thead><tr><th>Primitive</th><th>${esc(a)}</th><th>${esc(b)}</th><th>Δ</th></tr></thead>
+    <tbody>${deltas.map((d) => `<tr><td class="text">${esc(d.label)}</td><td>${d.a.toFixed(2)}</td>`
+      + `<td>${d.b.toFixed(2)}</td><td style="color:${d.delta >= 0 ? "var(--pos)" : "var(--neg)"}">`
+      + `${d.delta >= 0 ? "+" : ""}${d.delta.toFixed(2)}</td></tr>`).join("")}</tbody></table>
+    ${coverageGaps.length ? `<p class="note" style="margin:.7rem 0 .2rem">Coverage two points apart or more</p>
+    <ul class="plain">${coverageGaps.map((g) =>
+      `<li>${esc(g.label)} — ${esc(g.gap > 0 ? labelA : labelB)} stronger by ${Math.abs(g.gap)}</li>`).join("")}</ul>`
+      : `<p class="note" style="margin-top:.7rem">No classification separates these forums by two points or more.</p>`}`;
+}
+
+$("#emphasis").addEventListener("mousemove", (event) => {
+  const row = event.target.closest(".dv-row");
+  if (!row) { hideTip(); return; }
+  const value = Number(row.dataset.value);
+  showTip(event, `<strong>${esc(row.dataset.label)}</strong>`
+    + `<div class="t-val">${value >= 0 ? "+" : ""}${value.toFixed(2)}σ ${value >= 0 ? "above" : "below"} the consensus</div>`
+    + `<div class="t-val" style="margin-top:.25rem">${esc(row.dataset.gloss)}</div>`);
+});
+$("#emphasis").addEventListener("mouseleave", hideTip);
+$("#jurisdiction").addEventListener("change", renderJurisdiction);
+$("#compare").addEventListener("change", renderComparison);
+
+/* ---------------------------------------------------------------- divergence */
+function renderDivergence() {
+  const rows = DATA.divergence;
+  const max = rows[0].risk;
+  $("#divergence").innerHTML = `<div class="bars">` + rows.map((row) => {
+    const cls = CLASSES.find((c) => c.id === row.class);
+    return `<div class="bar-row" data-class="${row.class}">
+      <span class="lab"><a href="#" data-goto="${row.class}" style="text-decoration:none">${esc(cls.label)}</a></span>
+      <span class="bar-track"><span class="bar-fill" style="width:${(row.risk / max * 100).toFixed(1)}%"></span></span>
+      <span class="val">${row.risk.toFixed(1)}</span>
+    </div>`;
+  }).join("") + `</div>`;
+
+  $("#divergence-table").innerHTML = `<table class="data"><thead><tr><th>Classification</th><th>Mean coverage</th>`
+    + `<th>SD</th><th>Density</th><th>Risk</th></tr></thead><tbody>`
+    + rows.map((row) => {
+        const cls = CLASSES.find((c) => c.id === row.class);
+        return `<tr><td class="text">${esc(cls.label)}</td><td>${row.mean.toFixed(2)}</td>`
+          + `<td>${row.sd.toFixed(2)}</td><td>${row.density}</td><td>${row.risk.toFixed(2)}</td></tr>`;
+      }).join("")
+    + `</tbody></table>`;
+
+  $("#divergence").addEventListener("mousemove", (event) => {
+    const row = event.target.closest(".bar-row");
+    if (!row) { hideTip(); return; }
+    const record = DIVERGENCE.get(row.dataset.class);
+    const cls = CLASSES.find((c) => c.id === row.dataset.class);
+    const strictest = DATA.jurisdictionIds.reduce((best, j) =>
+      cls.coverage[j] > cls.coverage[best] ? j : best, DATA.jurisdictionIds[0]);
+    const loosest = DATA.jurisdictionIds.reduce((worst, j) =>
+      cls.coverage[j] < cls.coverage[worst] ? j : worst, DATA.jurisdictionIds[0]);
+    showTip(event, `<strong>${esc(cls.label)}</strong>`
+      + `<div class="t-val">risk ${record.risk.toFixed(2)} · mean coverage ${record.mean.toFixed(2)} ± ${record.sd.toFixed(2)}</div>`
+      + `<div class="t-val" style="margin-top:.25rem">strictest ${esc(strictest)} · loosest ${esc(loosest)}</div>`);
+  });
+  $("#divergence").addEventListener("mouseleave", hideTip);
+
+  for (const link of $("#divergence").querySelectorAll("a[data-goto]")) {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      select(link.dataset.goto);
+      $("#matrix").scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+}
+
+/* -------------------------------------------------------------------- boot */
+renderMatrix();
+renderDossier();
+renderMap();
+renderNeighbours();
+renderJurisdiction();
+renderDivergence();
+window.addEventListener("resize", () => renderMap());
+</script>
+
+</body>
+</html>

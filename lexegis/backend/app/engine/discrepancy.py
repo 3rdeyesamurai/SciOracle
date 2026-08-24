@@ -393,6 +393,61 @@ def detect_definition_conflicts(harvests: list[dict], doc_titles: dict[str, str]
     return findings
 
 
+def detect_regulatory(doc_id: str, title: str, text: str, jurisdiction_ids: list[str],
+                      taxonomy) -> list[dict]:
+    """Findings from the semantic law matrix.
+
+    Two kinds. A missing provision is an omission with a named source: this
+    document engages a body of law, and the provision that body expects is not
+    in the text. A divergence is a cross-border problem rather than a drafting
+    one: the forums selected for this matter do not agree about the same
+    classification, so one set of terms cannot satisfy all of them.
+    """
+    assessment = taxonomy.assess(text, jurisdiction_ids)
+    engaged = {hit["class"]: hit for hit in assessment["engaged"]}
+    findings = []
+
+    def cue_span(class_id: str) -> dict:
+        hit = engaged.get(class_id)
+        cue = hit["cues"][0] if hit and hit["cues"] else None
+        if not cue:
+            return {"doc_id": doc_id, "start": 0, "end": 0, "text": title}
+        start, end = cue["start"], cue["end"]
+        return {"doc_id": doc_id, "start": start, "end": end, "document": title,
+                "text": text[max(0, start - 90):end + 90].replace("\n", " ").strip()}
+
+    for item in assessment["missing_provisions"]:
+        findings.append(_finding(
+            "statutory", "missing_provision",
+            "high" if (item.get("density") or 0) >= 28 else "medium", 0.72,
+            f"{item['class_label']}: no provision on {item['provision']}",
+            f"The document engages {item['class_label'].lower()} but contains nothing addressing "
+            f"{item['provision']}. Instruments to check: {', '.join(item['instruments']) or 'see matrix'}. "
+            f"{item['verify'] or ''}".strip(),
+            [cue_span(item["class"])],
+            provenance=[{"matrix_class": item["class"], "expects": item["provision"],
+                         "matrix_generated": assessment["matrix_generated"]}],
+        ))
+
+    for item in assessment["divergence"]:
+        coverage = ", ".join(f"{jid} {level}" for jid, level in item["coverage"].items())
+        findings.append(_finding(
+            "statutory", "cross_border_divergence",
+            "high" if item["risk"] >= 18 else "medium", 0.68,
+            f"Forum divergence on {item['label'].lower()}",
+            f"Coverage across the selected forums differs by {item['spread']} points ({coverage}); "
+            f"{item['strictest']} is strictest, {item['loosest']} the loosest. Weighted by the normative "
+            f"load of this classification the exposure scores {item['risk']}"
+            + (f", ranking {item['global_risk_rank']} of 32 for divergence field-wide"
+               if item["global_risk_rank"] else "")
+            + f". {item['verify']}",
+            [cue_span(item["class"])],
+            provenance=[{"matrix_class": item["class"], "spread": item["spread"],
+                         "instruments": item["instruments"]}],
+        ))
+    return findings
+
+
 def detect_epistemic(doc_id: str, title: str, forensics: dict, injection: dict, triage: dict) -> list[dict]:
     findings = []
     for item in forensics.get("findings", []):

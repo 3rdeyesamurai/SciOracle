@@ -6,7 +6,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .api import routes_auth, routes_billing, routes_core, routes_demo, routes_math
+from .api import (routes_auth, routes_billing, routes_core, routes_demo, routes_math,
+                  routes_taxonomy)
 from .config import WOLFRAM_APP_ID, WOLFRAM_MCP_URL
 from .db import init_db
 from .engine.mathx.verify import lean_verify
@@ -54,6 +55,7 @@ app.include_router(routes_auth.router)
 app.include_router(routes_core.router)
 app.include_router(routes_math.router)
 app.include_router(routes_billing.router)
+app.include_router(routes_taxonomy.router)
 app.include_router(routes_demo.router)
 
 

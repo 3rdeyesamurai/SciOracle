@@ -25,6 +25,7 @@ class AnalysisRequest(BaseModel):
     doc_type: str = "commercial"
     use_lean: bool = False
     use_wolfram: bool = False
+    jurisdictions: list[str] = Field(default_factory=list)
 
 
 class TextIngest(BaseModel):
@@ -137,7 +138,8 @@ def analyse(matter_id: str, body: AnalysisRequest,
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"doc_type must be one of {DOC_TYPES}")
     result = pipeline.analyse_matter(principal.org_id, matter_id, doc_type=body.doc_type,
                                      actor=principal.actor, use_lean=body.use_lean,
-                                     use_wolfram=body.use_wolfram)
+                                     use_wolfram=body.use_wolfram,
+                                     jurisdictions=[j.upper() for j in body.jurisdictions])
     plans.record(principal.org_id, "analyses_per_month")
     plans.record(principal.org_id, "equations_per_month", len(result["equations"]))
     return result

@@ -9,6 +9,7 @@ adjudicated, and every decision is written to a hash-chained ledger that can be 
 lexegis/
 ├── backend/        FastAPI engine + multi-tenant SaaS layer (Python, stdlib-heavy)
 ├── frontend/       React (Vite) application — matters, findings, equation lab, ledger
+├── law-matrix/     Semantic law matrix — 32 classifications of digital consumer law, computed in Wolfram
 └── docker-compose.yml
 ```
 
@@ -41,6 +42,7 @@ the defect classes the engine exists to find, and runs a full analysis.
 | 4 · System 1 | `app/engine/system1.py` | Clauses, parties, defined terms, obligations with deontic polarity, dates, and normalised attributes — every fact carries the character span it came from. |
 | 5 · Discrepancies | `app/engine/discrepancy.py` | Ambiguity, omission and direct contradiction, in-text and cross-document, plus impossible-chronology and mathematical categories. |
 | 6 · Equations | `app/engine/mathx/` | Extraction (LaTeX + plain), Strict Content MathML / OpenMath / OMDoc encoding, canonicalisation by equality saturation, adjudication by SymPy / Wolfram / Lean 4. |
+| 6b · Statutory | `app/engine/taxonomy.py` | The semantic law matrix applied to a document: which bodies of digital consumer law its own language engages, which provisions they expect that are absent, and where the selected forums diverge about them. |
 | 7 · Provenance | `app/engine/ledger.py` | Append-only hash chain; `GET /api/v1/ledger/verify` recomputes it and names the first broken link. |
 
 ### The e-graph
@@ -68,6 +70,16 @@ claim restated as `a² + 2ab + b²` is matched to `(a + b)²`.
 An unavailable prover is reported as unavailable. The engine never upgrades a claim to verified
 because a prover was missing, and it reports backend disagreement rather than silently picking one.
 
+### The semantic law matrix
+
+`law-matrix/` holds a computable representation of digital consumer law: 32 classifications scored
+against 16 normative primitives, and 12 jurisdictions scored against the classifications. Wolfram
+Language computes the cosine geometry, clustering, SVD embedding, primitive statistics and
+jurisdictional emphasis; `build_matrix.py` re-derives every shared quantity and refuses to publish if
+the two disagree. The engine consumes the result, so an analysis run with `jurisdictions` set reports
+missing provisions cited to instruments and cross-border divergence on the classifications the
+document actually engages. See [`law-matrix/README.md`](law-matrix/README.md).
+
 ## API
 
 `/docs` carries the full OpenAPI schema. The endpoints that matter:
@@ -84,6 +96,9 @@ POST /api/v1/math/extract                   pull equations out of prose
 GET  /api/v1/math/archive/{id}/omdoc        OMDoc export
 GET  /api/v1/ledger/verify                  recompute the hash chain
 POST /api/v1/eval/alignment                 score predicted spans against ground truth
+GET  /api/v1/taxonomy                       the full semantic law matrix
+POST /api/v1/taxonomy/assess                read a document against the matrix
+GET  /api/v1/taxonomy/compare?a=EU&b=US_FED emphasis distance between two forums
 ```
 
 Authenticate with `Authorization: Bearer <jwt>` or `X-API-Key: lxg_…`. API keys are stored as
@@ -99,13 +114,14 @@ analysis from running, but it can never change an analytical result. Billing run
 ## Tests
 
 ```bash
-cd backend && python -m pytest -q      # 34 tests
+cd backend && python -m pytest -q      # 48 tests
 ```
 
 They cover the security posture (hostile documents quarantined, clean documents promoted no further
 than L2), extraction spans addressing real bytes, each discrepancy category, e-graph congruence and
 non-congruence, counterexample refutation, well-formed semantic markup, alignment scoring, ledger
-tamper detection, tenant isolation, quota enforcement, and a full pass over the demonstration corpus.
+tamper detection, tenant isolation, quota enforcement, the integrity of the computed law matrix and
+its findings, and a full pass over the demonstration corpus.
 
 ## Limits worth stating
 
