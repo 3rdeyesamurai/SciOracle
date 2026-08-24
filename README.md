@@ -172,3 +172,23 @@ When you want to evaluate equations much larger than 6GB of VRAM allows, or you 
 - **The Setup:** Offload the Heavy LLM (`qwen2.5-coder:32b`) inference to a managed cloud provider (e.g., changing the OpenClaw backend to use the OpenAI API, Anthropic, or an Ollama instance hosted on Azure).
 - **Execution:** Your local machine (or a cheap cloud VM) only handles the Math-EBM and SymPy AST verifications, while the heavy lifting of natural language and code generation happens via API.
 - **Trade-off:** This completely bypasses the need for massive LLM VRAM, freeing up your entire GPU for the Math-EBM. However, it violates the strict data privacy constraint, as your mathematical states and queries will be sent over the network to the LLM provider.
+
+---
+
+## Lexegis — neuro-symbolic legal engine (`lexegis/`)
+
+A separate, self-contained SaaS application living in [`lexegis/`](lexegis/): a dual-process engine
+that validates international paperwork for legal discrepancies and archives, canonicalises and
+formally verifies the mathematical claims embedded in it.
+
+* Forensic ingestion, indirect prompt-injection detection and default-deny L3→L2 context triage
+* Span-anchored extraction, then ambiguity / omission / contradiction detection within and across documents
+* Equation archiving in Strict Content MathML, OpenMath and OMDoc, canonicalised by equality saturation over an e-graph
+* Adjudication by SymPy, with optional Wolfram corroboration and Lean 4 certification
+* Hash-chained audit ledger, multi-tenant orgs, API keys, plans and quotas
+
+```bash
+cd lexegis && cp .env.example .env && docker compose up --build   # http://localhost:8080
+```
+
+See [`lexegis/README.md`](lexegis/README.md) for the architecture and API.

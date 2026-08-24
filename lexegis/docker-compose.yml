@@ -1,0 +1,27 @@
+services:
+  engine:
+    build: ./backend
+    environment:
+      LEXEGIS_JWT_SECRET: ${LEXEGIS_JWT_SECRET:?set a secret in .env}
+      LEXEGIS_DATA_DIR: /data
+      # optional System 2 backends
+      WOLFRAM_APP_ID: ${WOLFRAM_APP_ID:-}
+      WOLFRAM_MCP_URL: ${WOLFRAM_MCP_URL:-}
+      LEXEGIS_LEAN_BIN: ${LEXEGIS_LEAN_BIN:-lean}
+      # optional billing
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+    volumes:
+      - lexegis-data:/data
+    restart: unless-stopped
+
+  web:
+    build: ./frontend
+    depends_on:
+      - engine
+    ports:
+      - "${LEXEGIS_PORT:-8080}:80"
+    restart: unless-stopped
+
+volumes:
+  lexegis-data:
